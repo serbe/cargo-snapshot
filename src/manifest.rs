@@ -1,76 +1,85 @@
-use std::{env::current_dir, fs::read_to_string};
+use std::{
+    collections::HashMap,
+    env::current_dir,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Package {
-    pub name: Option<String>,
-    pub version: Option<String>,
-    pub authors: Vec<String>,
-    pub edition: Option<String>,
-    #[serde(rename = "rust-version")]
-    pub rust_version: Option<String>,
-    pub description: Option<String>,
-    pub documentation: Option<String>,
-    pub readme: Option<String>,
-    pub homepage: Option<String>,
-    pub repository: Option<String>,
-    pub license: Option<String>,
-    #[serde(rename = "license-file")]
-    pub license_file: Option<String>,
-    pub keywords: Vec<String>,
-    pub categories: Vec<String>,
-    pub workspace: Option<String>,
-    pub build: Option<String>,
-    pub links: Vec<String>,
-    pub exclude: Option<String>,
-    pub include: Option<String>,
-    pub publish: Option<String>,
-    pub metadata: Option<String>,
-    #[serde(rename = "default-run")]
-    pub default_run: Option<String>,
-    pub autolib: Option<String>,
-    pub autobins: Vec<String>,
-    pub autoexamples: Vec<String>,
-    pub autotests: Vec<String>,
-    pub autobenches: Vec<String>,
-    pub resolver: Option<String>,
+pub struct CargoToml {
+    package: Option<Package>,
+
+    workspace: Option<Workspace>,
+
+    dependencies: Option<HashMap<String, Dependency>>,
+
+    #[serde(rename = "dev-dependencies")]
+    dev_dependencies: Option<HashMap<String, Dependency>>,
+
+    #[serde(rename = "build-dependencies")]
+    build_dependencies: Option<HashMap<String, Dependency>>,
+
+    #[serde(flatten)]
+    extra: HashMap<String, toml::Value>,
 }
 
-// pub struct Metadata {
-//     pub members: Vec<String>,
-//     pub default_members: Vec<String>,
-//     pub package: Option<>,
-//     pub exclude: Vec<String>,
-//     pub metadata: Option<Metadata>,
-//     pub resolver: Option<Resolver>,
-//     pub dependencies: ,
-//     pub lints: ,
-// }
+#[derive(Debug, Serialize, Deserialize)]
+struct Package {
+    name: String,
+    version: String,
+    edition: String,
 
-// #[derive(Debug, Deserialize)]
-// pub struct CargoToml {
-//  pub package: Package,
-// [lib] — Library target settings.
-// [[bin]] — Binary target settings.
-// [[example]] — Example target settings.
-// [[test]] — Test target settings.
-// [[bench]] — Benchmark target settings.
+    #[serde(flatten)]
+    extra: HashMap<String, toml::Value>,
+}
 
-// [dependencies] — Package library dependencies.
-// [dev-dependencies] — Dependencies for examples, tests, and benchmarks.
-// [build-dependencies] — Dependencies for build scripts.
-// [target] — Platform-specific dependencies.
-// [badges] — Badges to display on a registry.
-// [features] — Conditional compilation features.
-// [lints] — Configure linters for this package.
-// [hints] — Provide hints for compiling this package.
-// [patch] — Override dependencies.
-// [replace] — Override dependencies (deprecated).
-// [profile] — Compiler settings and optimizations.
-// [workspace] — The workspace definition.
-// }
+#[derive(Debug, Serialize, Deserialize)]
+struct Workspace {
+    members: Option<Vec<String>>,
+    exclude: Option<Vec<String>>,
+
+    dependencies: Option<HashMap<String, Dependency>>,
+
+    #[serde(flatten)]
+    extra: HashMap<String, toml::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum Dependency {
+    Simple(String),
+
+    Detailed(DetailedDependency),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DetailedDependency {
+    version: Option<String>,
+    path: Option<String>,
+    git: Option<String>,
+    branch: Option<String>,
+    features: Option<Vec<String>>,
+    optional: Option<bool>,
+    workspace: Option<bool>,
+
+    #[serde(rename = "default-features")]
+    default_features: Option<bool>,
+
+    #[serde(flatten)]
+    extra: HashMap<String, toml::Value>,
+}
+
+impl CargoToml {
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let manifest_path = path.join("Cargo.toml");
+        let content = fs::read_to_string(manifest_path)?;
+        let cargo: CargoToml = toml::from_str(&content)?;
+        Ok(cargo)
+    }
+}
 
 // pub fn read_manifest() -> Result<()> {
 //     let current_dir = current_dir()?;
