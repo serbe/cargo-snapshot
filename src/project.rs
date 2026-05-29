@@ -1,129 +1,114 @@
 use anyhow::{Context, Result};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::env::current_dir;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Component, Path, PathBuf};
+use toml::Value;
+use tracing::debug;
 
-/// Результат анализа текущего каталога
 #[derive(Debug)]
-struct CargoSnapshot {
-    /// Является ли текущий каталог крейтом
-    is_crate: bool,
-    /// Является ли частью workspace
-    is_workspace_member: bool,
-    /// Является ли корнем workspace
-    is_workspace_root: bool,
-    /// Члены workspace (если текущий каталог - корень workspace)
-    workspace_members: Vec<WorkspaceMember>,
-    /// Путь к Cargo.toml текущего проекта
-    manifest_path: Option<PathBuf>,
-    // /// Тип проекта
-    // project_type: ProjectType,
+pub struct Project {
+    pub is_crate: bool,
+    pub is_workspace_member: bool,
+    pub is_workspace_root: bool,
+    pub workspace_members: Vec<WorkspaceMember>,
+    pub current_dir: PathBuf,
+    pub manifest_path: Option<PathBuf>,
 }
 
 #[derive(Debug)]
-struct WorkspaceMember {
-    /// Имя крейта
-    name: String,
-    /// Путь к крейту относительно корня workspace
-    relative_path: PathBuf,
-    /// Абсолютный путь к крейту
-    absolute_path: PathBuf,
+pub struct WorkspaceMember {
+    pub name: String,
+    pub relative_path: PathBuf,
+    pub absolute_path: PathBuf,
 }
 
-/// Тип проекта для более ясной семантики
-#[derive(Debug)]
-enum ProjectType {
-    /// Обычный крейт (не в workspace)
-    StandaloneCrate,
-    /// Крейт, входящий в workspace
-    WorkspaceMember { root_path: PathBuf },
-    /// Корень workspace
-    WorkspaceRoot,
-    /// Не является крейтом
-    NotACrate,
+impl Project {
+    pub fn default() -> Result<Self> {
+        Self::new(&current_dir()?)
+    }
+
+    pub fn new(current_dir: &Path) -> Result<Self> {
+        let manifest_path = current_dir.join("Cargo.toml");
+        let is_crate = manifest_path.exists();
+
+        let (is_part_of_workspace, workspace_root) = if is_crate {
+            find_workspace_root(&manifest_path)?
+        } else {
+            (false, None)
+        };
+
+        let is_workspace_root = workspace_root.as_deref() == Some(current_dir);
+
+        let workspace_members = match (is_workspace_root, &workspace_root) {
+            (true, _) => get_workspace_members(&manifest_path)
+                .context(format!("Не удалось прочитать {}", manifest_path.display()))?,
+            (false, Some(root)) => get_workspace_members(&root.join("Cargo.toml"))?,
+            (false, None) => vec![],
+        };
+
+        Ok(Self {
+            is_crate,
+            is_workspace_member: is_part_of_workspace && is_crate,
+            is_workspace_root,
+            workspace_members,
+            current_dir: current_dir.to_path_buf(),
+            manifest_path: is_crate.then_some(manifest_path),
+        })
+    }
+
+    pub fn collect_sources(&self, output_path: &str) -> Result<()> {
+        let mut output =
+            File::create(output_path).context(format!("Не удалось создать {}", output_path))?;
+
+        if self.is_workspace_root {
+            for member in &self.workspace_members {
+                writeln!(output, "// ===== CRATE: {} =====\n", member.name)?;
+                collect_rs_files(
+                    &self.current_dir,
+                    &member.absolute_path.join("src"),
+                    &mut output,
+                )?;
+                writeln!(output)?;
+            }
+        } else if self.is_crate {
+            collect_rs_files(
+                &self.current_dir,
+                &self.current_dir.join("src"),
+                &mut output,
+            )?;
+        } else {
+            anyhow::bail!("Текущий каталог не является крейтом или воркспейсом");
+        }
+
+        Ok(())
+    }
 }
 
-/// Анализирует указанный каталог
-fn analyze_directory(path: &Path) -> Result<CargoSnapshot> {
-    let manifest_path = path.join("Cargo.toml");
-    let is_crate = manifest_path.exists();
-
-    let (is_part_of_workspace, workspace_root) = if is_crate {
-        find_workspace_root(&manifest_path)?
-    } else {
-        (false, None)
-    };
-
-    let is_workspace_root = if let Some(root) = &workspace_root {
-        root == path
-    } else {
-        false
-    };
-
-    let workspace_members = if is_workspace_root {
-        get_workspace_members(&manifest_path)
-            .context(format!("Не удалось прочитать {}", manifest_path.display()))?
-    } else if let Some(root) = workspace_root {
-        // Если это не корень, но часть воркспейса
-        let root_manifest = root.join("Cargo.toml");
-        get_workspace_members(&root_manifest)?
-    } else {
-        vec![]
-    };
-
-    Ok(CargoSnapshot {
-        is_crate,
-        is_workspace_member: is_part_of_workspace && is_crate,
-        is_workspace_root,
-        workspace_members,
-        manifest_path: if is_crate { Some(manifest_path) } else { None },
-    })
-}
-
-/// Находит корень воркспейса, если текущий крейт является его частью
 fn find_workspace_root(manifest_path: &Path) -> Result<(bool, Option<PathBuf>)> {
-    let content = fs::read_to_string(manifest_path)
-        .context(format!("Не удалось прочитать {}", manifest_path.display()))?;
+    debug!("manifest path {:?}", manifest_path);
 
-    // Парсим как TOML (упрощенный вариант, не требует внешних крейтов)
-    if let Some(workspace) = find_workspace_section(&content) {
-        // Если есть секция [workspace], то это корень воркспейса
-        if workspace.contains("[workspace]") {
-            return Ok((true, Some(manifest_path.parent().unwrap().to_path_buf())));
-        }
+    let parsed = read_toml(manifest_path)?;
+
+    // Если есть секция [workspace] — это корень воркспейса
+    if parsed.get("workspace").is_some() {
+        return Ok((true, Some(manifest_path.parent().unwrap().to_path_buf())));
     }
 
-    // Ищем виртуальный воркспейс
-    if let Some(virtual_workspace) = find_virtual_workspace(&content) {
-        if virtual_workspace {
-            return Ok((true, Some(manifest_path.parent().unwrap().to_path_buf())));
-        }
-    }
+    // Поднимаемся вверх по дереву каталогов в поисках корня воркспейса
+    let crate_dir = manifest_path.parent().unwrap();
+    let mut current = crate_dir;
 
-    // Ищем членство в воркспейсе
-    if let Some(members) = find_workspace_members(&content) {
-        if !members.is_empty() {
-            // Это корень воркспейса
-            return Ok((true, Some(manifest_path.parent().unwrap().to_path_buf())));
-        }
-    }
-
-    // Проверяем, не является ли этот крейт членом воркспейса
-    // Поднимаемся вверх по дереву каталогов
-    let mut current = manifest_path.parent().unwrap();
     while let Some(parent) = current.parent() {
         let parent_manifest = parent.join("Cargo.toml");
         if parent_manifest.exists() {
-            let parent_content = fs::read_to_string(&parent_manifest).context(format!(
-                "Не удалось прочитать {}",
-                parent_manifest.display()
-            ))?;
-
-            if let Some(members) = find_workspace_members(&parent_content) {
-                for member in members {
-                    let member_path = parent.join(member);
-                    if current.starts_with(&member_path) || current == member_path {
-                        return Ok((true, Some(parent.to_path_buf())));
-                    }
+            let parent_parsed = read_toml(&parent_manifest)?;
+            if let Some(members) = get_members_from_toml(&parent_parsed) {
+                let is_member = members
+                    .iter()
+                    .any(|m| normalize_path(&parent.join(m)) == normalize_path(crate_dir));
+                if is_member {
+                    return Ok((true, Some(parent.to_path_buf())));
                 }
             }
         }
@@ -133,126 +118,114 @@ fn find_workspace_root(manifest_path: &Path) -> Result<(bool, Option<PathBuf>)> 
     Ok((false, None))
 }
 
-/// Получает список всех крейтов в воркспейсе
 fn get_workspace_members(manifest_path: &Path) -> Result<Vec<WorkspaceMember>> {
-    let content = fs::read_to_string(manifest_path)?;
-
+    let parsed = read_toml(manifest_path)?;
     let workspace_dir = manifest_path.parent().unwrap();
-    let mut members = Vec::new();
 
-    // Получаем список членов из секции [workspace]
-    if let Some(member_paths) = find_workspace_members(&content) {
-        for member_path in member_paths {
-            let relative_path = workspace_dir.join(&member_path);
-            let cargo_toml = relative_path.join("Cargo.toml");
-            let absolute_path = fs::canonicalize(&relative_path)?;
-
-            if cargo_toml.exists() {
-                if let Some(name) = get_crate_name(&cargo_toml) {
-                    members.push(WorkspaceMember {
-                        name,
-                        relative_path,
-                        absolute_path,
-                    });
-                } else if let Some(name) = get_package_name_from_path(&member_path) {
-                    members.push(WorkspaceMember {
-                        name,
-                        relative_path,
-                        absolute_path,
-                    });
+    let mut members = get_members_from_toml(&parsed)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|member_path| {
+            let absolute_path = workspace_dir.join(&member_path);
+            let cargo_toml = absolute_path.join("Cargo.toml");
+            cargo_toml.exists().then(|| {
+                let name = get_crate_name(&cargo_toml)
+                    .or_else(|| {
+                        Path::new(&member_path)
+                            .file_name()?
+                            .to_str()
+                            .map(String::from)
+                    })
+                    .unwrap_or_else(|| member_path.clone());
+                WorkspaceMember {
+                    name,
+                    relative_path: PathBuf::from(&member_path),
+                    absolute_path,
                 }
-            }
-        }
-    }
+            })
+        })
+        .collect::<Vec<_>>();
 
-    // Сортируем для консистентности
     members.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(members)
 }
 
-/// Поиск секции workspace в TOML
-fn find_workspace_section(content: &str) -> Option<&str> {
-    let lines: Vec<&str> = content.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        if line.trim() == "[workspace]" {
-            let mut end = i + 1;
-            while end < lines.len() && !lines[end].trim().starts_with('[') {
-                end += 1;
-            }
-            return Some(
-                &content[lines[i].as_ptr() as usize - content.as_ptr() as usize
-                    ..lines[end - 1].as_ptr() as usize + lines[end - 1].len()
-                        - content.as_ptr() as usize],
-            );
-        }
-    }
-    None
+fn get_members_from_toml(parsed: &Value) -> Option<Vec<String>> {
+    let members = parsed
+        .get("workspace")?
+        .get("members")?
+        .as_array()?
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect::<Vec<_>>();
+
+    (!members.is_empty()).then_some(members)
 }
 
-/// Проверка на виртуальный воркспейс
-fn find_virtual_workspace(content: &str) -> Option<bool> {
-    let has_workspace = content.contains("[workspace]");
-    let has_package = content.contains("[package]");
-    Some(has_workspace && !has_package)
-}
-
-/// Поиск членов воркспейса
-fn find_workspace_members(content: &str) -> Option<Vec<String>> {
-    if let Some(workspace_section) = find_workspace_section(content) {
-        let mut members = Vec::new();
-        for line in workspace_section.lines() {
-            let line = line.trim();
-            if line.starts_with("members = [") || line.starts_with("members=[") {
-                // Парсим массив
-                let array_start = line.find('[').unwrap();
-                let array_end = line.rfind(']');
-
-                if let Some(end) = array_end {
-                    let array_content = &line[array_start + 1..end];
-                    for member in array_content.split(',') {
-                        let member = member.trim().trim_matches('"').trim_matches('\'');
-                        if !member.is_empty() {
-                            members.push(member.to_string());
-                        }
-                    }
-                }
-            } else if line.starts_with('"') || line.starts_with('\'') {
-                // Многострочный формат
-                let member = line.trim_matches('"').trim_matches('\'').trim();
-                if !member.is_empty() && !member.starts_with('[') && !member.starts_with(']') {
-                    members.push(member.to_string());
-                }
-            }
-        }
-
-        if !members.is_empty() {
-            return Some(members);
-        }
-    }
-    None
-}
-
-/// Получение имени крейта из Cargo.toml
 fn get_crate_name(manifest_path: &Path) -> Option<String> {
-    let content = fs::read_to_string(manifest_path).ok()?;
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("name = ") {
-            let name = line
-                .trim_start_matches("name = ")
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_string();
-            return Some(name);
-        }
-    }
-    None
+    let parsed = read_toml(manifest_path).ok()?;
+    parsed
+        .get("package")?
+        .get("name")?
+        .as_str()
+        .map(String::from)
 }
 
-/// Получение имени пакета из пути
-fn get_package_name_from_path(path: &str) -> Option<String> {
-    let path = Path::new(path);
-    let name = path.file_name()?.to_str()?;
-    Some(name.to_string())
+/// Читает и парсит TOML файл
+fn read_toml(path: &Path) -> Result<Value> {
+    let content =
+        fs::read_to_string(path).context(format!("Не удалось прочитать {}", path.display()))?;
+    toml::from_str(&content).context(format!("Не удалось распарсить {}", path.display()))
+}
+
+/// Нормализует путь без обращения к файловой системе (безопасно на Windows)
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                components.pop();
+            }
+            other => components.push(other),
+        }
+    }
+    components.iter().collect()
+}
+
+/// Рекурсивно обходит директорию и записывает содержимое .rs файлов.
+/// Путь к файлу пишется относительно base_dir.
+fn collect_rs_files(base_dir: &Path, dir: &Path, output: &mut impl Write) -> Result<()> {
+    if !dir.exists() {
+        debug!("src/ не найден в {:?}", dir);
+        return Ok(());
+    }
+
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .context(format!("Не удалось прочитать директорию {}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    entries.sort_by_key(|e| e.path());
+
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs_files(base_dir, &path, output)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            let relative = path.strip_prefix(base_dir).unwrap_or(&path);
+            writeln!(output, "// ----- {} -----\n", relative.display())?;
+
+            let content = fs::read_to_string(&path)
+                .context(format!("Не удалось прочитать {}", path.display()))?;
+            output.write_all(content.as_bytes())?;
+
+            if !content.ends_with('\n') {
+                writeln!(output)?;
+            }
+            writeln!(output)?;
+        }
+    }
+
+    Ok(())
 }

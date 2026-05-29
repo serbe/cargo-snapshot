@@ -1,30 +1,24 @@
-use std::env::current_dir;
+use anyhow::Result;
+
+use crate::project::Project;
 
 mod config;
 mod project;
 
-fn main() {
-    let current_dir = current_dir().expect("Не удалось получить текущий каталог");
+fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
+        .init();
 
-    // match analyze_directory(&current_dir) {
-    //     Ok(result) => {
-    //         println!("Анализ каталога: {}", current_dir.display());
-    //         println!("=================================");
-    //         println!("Является крейтом: {}", result.is_crate);
-    //         println!("Часть воркспейса: {}", result.is_part_of_workspace);
-    //         println!("Корень воркспейса: {}", result.is_workspace_root);
+    // let project = Project::default()?;
+    let project = Project::new(std::path::Path::new(
+        "D:\\forgejo\\xray-manager\\crates\\xray-daemon",
+    ))?;
+    // let project = Project::new(std::path::Path::new("D:\\forgejo\\xray-manager"))?;
 
-    //         if !result.workspace_members.is_empty() {
-    //             println!("\nЧлены воркспейса ({})", result.workspace_members.len());
-    //             for member in result.workspace_members {
-    //                 println!("  • {} -> {}", member.name, member.path.display());
-    //             }
-    //         }
+    // print!("{project:?}");
 
-    //         if let Some(path) = result.manifest_path {
-    //             println!("\nМанифест: {}", path.display());
-    //         }
-    //     }
-    //     Err(e) => eprintln!("Ошибка: {}", e),
-    // }
+    project.collect_sources("snapshot.rs")?;
+
+    Ok(())
 }
