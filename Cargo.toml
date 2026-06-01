@@ -1,12 +1,24 @@
 [package]
 name = "cargo-snapshot"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
+description = "A Cargo subcommand that fuses a Rust workspace into a single file"
+repository = "https://github.com/serbe/snapshot"
+readme = "README.md"
+license = "MIT"
+keywords = ["cargo", "subcommand", "bundle", "single-file", "binary", "snapshot"]
+authors = ["Serbe"]
+categories = ["development-tools", "development-tools::cargo-plugins"]
 
 [dependencies]
 anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+glob = "0.3"
+thiserror = "2.0"
 toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[bin]]
+name = "cargo-snapshot"
+path = "src/main.rs"

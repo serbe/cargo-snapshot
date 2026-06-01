@@ -1,24 +1,36 @@
 use anyhow::Result;
+use clap::Parser;
+use tracing_subscriber::{EnvFilter, fmt};
 
-use crate::project::Project;
+use args::Args;
+use project::Project;
 
-mod config;
+mod args;
+mod manifest;
 mod project;
+mod structure;
+mod walk;
+mod workspace;
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
-        .init();
+    let args = Args::parse();
 
-    // let project = Project::default()?;
-    let project = Project::new(std::path::Path::new(
-        "D:\\forgejo\\xray-manager\\crates\\xray-daemon",
-    ))?;
-    // let project = Project::new(std::path::Path::new("D:\\forgejo\\xray-manager"))?;
+    init_tracing(&args)?;
 
-    // print!("{project:?}");
+    let project = Project::from_current_dir(args)?;
+    let output_path = project.args.output_path();
 
-    project.collect_sources("snapshot.rs")?;
+    project.collect_sources(&output_path)?;
 
+    println!("✅ Snapshot saved to {}", output_path.display());
+    Ok(())
+}
+
+/// Initialize tracing subscriber with configured log level
+fn init_tracing(args: &Args) -> Result<()> {
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&args.log_level));
+
+    fmt().with_env_filter(env_filter).init();
     Ok(())
 }
