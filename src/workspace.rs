@@ -1,93 +1,84 @@
 use anyhow::Result;
-use glob::glob;
 use std::path::PathBuf;
-use tracing::warn;
 
 use crate::manifest::Manifest;
 
-/// A member of a Rust workspace
 #[derive(Debug, Clone)]
-pub struct WorkspaceMember {
-    /// Member name (crate name)
+pub(crate) struct WorkspaceMember {
     pub name: String,
-    /// Path relative to workspace root
-    pub relative_path: PathBuf,
-    /// Absolute path to member directory
     pub absolute_path: PathBuf,
-    /// Member's manifest
-    pub manifest: Manifest,
 }
 
 impl WorkspaceMember {
-    /// Collect all workspace members from a workspace manifest
-    pub fn collect(workspace_manifest: &Manifest) -> Result<Vec<Self>> {
-        if !workspace_manifest.is_workspace {
+    /// Collects all workspace members by resolving member patterns from workspace manifest
+    pub(crate) fn collect(workspace_manifest: &Manifest) -> Result<Vec<Self>> {
+        let Some(workspace) = &workspace_manifest.cargo_toml.workspace else {
             return Ok(Vec::new());
-        }
+        };
 
-        let workspace_dir = workspace_manifest.path.parent().unwrap();
-        let patterns = &workspace_manifest.members;
-
+        let workspace_root = workspace_manifest
+            .path
+            .parent()
+            .expect("Workspace manifest path has no parent");
         let mut members = Vec::new();
 
-        for pattern in patterns {
-            let full_pattern = workspace_dir.join(pattern);
-            let full_pattern_str = full_pattern.to_string_lossy();
+        for pattern in &workspace.members {
+            let pattern_path = workspace_root.join(pattern);
 
-            let paths = match glob(&full_pattern_str) {
-                Ok(paths) => paths.filter_map(|p| p.ok()).collect::<Vec<_>>(),
-                Err(e) => {
-                    warn!("Invalid glob pattern '{}': {}", pattern, e);
-                    continue;
-                }
-            };
-
-            for absolute_path in paths {
-                let cargo_toml = absolute_path.join("Cargo.toml");
-                if !cargo_toml.exists() {
-                    continue;
-                }
-
-                let manifest = match Manifest::from_path(&cargo_toml) {
-                    Ok(m) => m,
+            if pattern_path.exists() && pattern_path.is_dir() {
+                let cargo_toml = pattern_path.join("Cargo.toml");
+                match Manifest::load(&cargo_toml) {
+                    Ok(manifest) => {
+                        members.push(WorkspaceMember {
+                            name: manifest.crate_name(),
+                            absolute_path: pattern_path,
+                        });
+                    }
                     Err(e) => {
-                        warn!(
-                            "Failed to parse manifest at {}: {}",
+                        tracing::warn!(
+                            "Failed to load manifest at {}: {}",
                             cargo_toml.display(),
                             e
                         );
-                        continue;
                     }
-                };
-
-                let relative_path = absolute_path
-                    .strip_prefix(workspace_dir)
-                    .unwrap_or(&absolute_path)
-                    .to_path_buf();
-
-                let name = manifest.crate_name();
-
-                members.push(Self {
-                    name,
-                    relative_path,
-                    absolute_path,
-                    manifest,
-                });
+                }
+            } else {
+                let pattern_str = pattern_path.to_string_lossy();
+                match glob::glob(&pattern_str) {
+                    Ok(paths) => {
+                        for path in paths.flatten() {
+                            if path.join("Cargo.toml").exists() {
+                                match Manifest::load(path.join("Cargo.toml")) {
+                                    Ok(manifest) => {
+                                        members.push(WorkspaceMember {
+                                            name: manifest.crate_name(),
+                                            absolute_path: path,
+                                        });
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Failed to load manifest at {}: {}",
+                                            path.display(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Invalid glob pattern '{}': {}", pattern_str, e);
+                    }
+                }
             }
         }
 
-        // Deduplicate by absolute path
-        members.sort_by(|a, b| a.absolute_path.cmp(&b.absolute_path));
-        members.dedup_by(|a, b| a.absolute_path == b.absolute_path);
-
-        // Sort by name for consistent output
         members.sort_by(|a, b| a.name.cmp(&b.name));
-
         Ok(members)
     }
 
     /// Get source directory path
-    pub fn src_dir(&self) -> PathBuf {
+    pub(crate) fn src_dir(&self) -> PathBuf {
         self.absolute_path.join("src")
     }
 }

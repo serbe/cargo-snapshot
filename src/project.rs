@@ -1,180 +1,102 @@
-use anyhow::{Result, bail};
-use std::fs::File;
-use std::io::Write;
+use anyhow::{Context, Result};
+use std::env::current_dir;
 use std::path::{Path, PathBuf};
-use tracing::info;
 
-use crate::args::{Args, OutputFormat};
 use crate::manifest::Manifest;
-use crate::structure::write_project_tree;
-use crate::walk::{collect_source_files, dir_name, read_file_content};
+use crate::walk::find_nearest_cargo_toml;
 use crate::workspace::WorkspaceMember;
 
 /// Represents a Rust project (crate or workspace)
 #[derive(Debug)]
-pub struct Project {
-    /// Project root directory
+pub(crate) struct Project {
     pub root_dir: PathBuf,
-    /// Project manifest (if exists)
-    pub manifest: Option<Manifest>,
-    /// Workspace members (if workspace)
+    pub manifest: Manifest,
     pub members: Vec<WorkspaceMember>,
-    /// Command-line arguments
-    pub args: Args,
 }
 
 impl Project {
     /// Create a new project from current directory
-    pub fn from_current_dir(args: Args) -> Result<Self> {
-        Self::new(&std::env::current_dir()?, args)
+    pub(crate) fn from_current_dir() -> Result<Self> {
+        let current_dir = current_dir()?;
+        let cargo_toml_path = find_nearest_cargo_toml(&current_dir)?;
+        let project_dir = cargo_toml_path
+            .parent()
+            .with_context(|| format!("failed to get parent of {}", cargo_toml_path.display()))?;
+
+        Self::discover(project_dir)
     }
 
     /// Create a new project from a directory
-    pub fn new(dir: &Path, args: Args) -> Result<Self> {
+    pub(crate) fn discover(dir: &Path) -> Result<Self> {
         let manifest_path = dir.join("Cargo.toml");
+        let manifest = Manifest::load(manifest_path)?;
 
-        if !manifest_path.exists() {
-            bail!("это не проект rust");
+        if manifest.is_workspace() {
+            return Self::from_workspace(manifest);
         }
 
-        let manifest = Manifest::from_path(&manifest_path)?;
-
-        let (root_dir, members) = if manifest.is_workspace {
-            let members = WorkspaceMember::collect(&manifest)?;
-            (dir.to_path_buf(), members)
-        } else if let Some(root) = manifest.workspace_root() {
-            let root_manifest = Manifest::from_path(&root.join("Cargo.toml"))?;
-            let members = WorkspaceMember::collect(&root_manifest)?;
-            (root, members)
-        } else {
-            (dir.to_path_buf(), vec![])
-        };
-
-        // Update manifest to use root manifest if different
-        let root_manifest = if root_dir != dir {
-            Some(Manifest::from_path(&root_dir.join("Cargo.toml"))?)
-        } else {
-            Some(manifest)
-        };
+        if let Some(root) = find_workspace_root(manifest.path.parent().with_context(|| {
+            format!(
+                "Cargo.toml has no parent directory: {}",
+                manifest.path.display()
+            )
+        })?)? {
+            let root_manifest = Manifest::load(root.join("Cargo.toml"))?;
+            return Self::from_workspace(root_manifest);
+        }
 
         Ok(Self {
-            root_dir,
-            manifest: root_manifest,
-            members,
-            args,
+            root_dir: dir.to_path_buf(),
+            manifest,
+            members: Vec::new(),
         })
     }
 
-    /// Collect all sources and write to output file
-    pub fn collect_sources(&self, output_path: &Path) -> Result<()> {
-        let mut output = File::create(output_path)?;
+    /// Creates a project from a workspace manifest
+    fn from_workspace(manifest: Manifest) -> Result<Self> {
+        let root_dir = manifest
+            .path
+            .parent()
+            .with_context(|| format!("Cargo.toml path has no parent: {}", manifest.path.display()))?
+            .to_path_buf();
 
-        self.write_header(&mut output)?;
-
-        if let Some(manifest) = &self.manifest {
-            manifest.write_metadata(&mut output)?;
-        }
-
-        write_project_tree(
-            &mut output,
-            self.is_workspace_root(),
-            &self.members,
-            &self.root_dir,
-            self.manifest.as_ref().map(|m| m.path.as_path()),
-            self.args.include_hidden,
-        )?;
-
-        self.write_sources(&mut output)?;
-
-        info!("Snapshot saved to {}", output_path.display());
-        Ok(())
+        Ok(Self {
+            members: WorkspaceMember::collect(&manifest)?,
+            root_dir,
+            manifest,
+        })
     }
 
     /// Check if this is a workspace root
-    fn is_workspace_root(&self) -> bool {
-        self.manifest.as_ref().is_some_and(|m| m.is_workspace)
+    pub(crate) fn is_workspace_root(&self) -> bool {
+        self.manifest.is_workspace()
     }
 
-    /// Write header to output
-    fn write_header<W: Write>(&self, output: &mut W) -> Result<()> {
-        writeln!(output, "// ========================================")?;
-        writeln!(output, "// CARGO SNAPSHOT")?;
-        writeln!(output, "// Generated by cargo-snapshot")?;
-        writeln!(output, "// ========================================\n")?;
-        Ok(())
+    /// Returns the workspace name
+    pub(crate) fn workspace_name(&self) -> String {
+        self.manifest.crate_name()
     }
+}
 
-    /// Write all source files to output
-    fn write_sources<W: Write>(&self, output: &mut W) -> Result<()> {
-        if self.is_workspace_root() {
-            let workspace_name = self
-                .manifest
-                .as_ref()
-                .and_then(|m| m.package_name.clone())
-                .or_else(|| dir_name(&self.root_dir))
-                .unwrap_or_else(|| "unnamed_workspace".to_string());
+/// Finds the workspace root by traversing up parent directories
+pub(crate) fn find_workspace_root(crate_dir: &Path) -> Result<Option<PathBuf>> {
+    let crate_dir = crate_dir
+        .parent()
+        .with_context(|| format!("failed to get parent of {}", crate_dir.display()))?;
 
-            writeln!(
-                output,
-                "// ========== WORKSPACE: {} ==========\n",
-                workspace_name
-            )?;
+    for parent in crate_dir.ancestors().skip(1) {
+        let cargo_toml = parent.join("Cargo.toml");
 
-            for member in &self.members {
-                writeln!(
-                    output,
-                    "\n// ---------- CRATE: {} ----------\n",
-                    member.name
-                )?;
-                self.collect_crate_sources(output, &member.src_dir())?;
-            }
-        } else if let Some(manifest) = &self.manifest {
-            let crate_name = manifest.crate_name();
-            writeln!(output, "// ========== CRATE: {} ==========\n", crate_name)?;
-            self.collect_crate_sources(output, &self.root_dir.join("src"))?;
+        if !cargo_toml.exists() {
+            continue;
         }
 
-        Ok(())
-    }
+        let workspace_manifest = Manifest::load(&cargo_toml)?;
 
-    /// Collect and write all .rs files from a crate's source directory
-    fn collect_crate_sources<W: Write>(&self, output: &mut W, src_dir: &Path) -> Result<()> {
-        let files = collect_source_files(src_dir, self.args.include_hidden, &|path| {
-            self.args.should_exclude(path)
-        })?;
-
-        for file_path in files {
-            let relative = file_path.strip_prefix(&self.root_dir).unwrap_or(&file_path);
-            let content = read_file_content(&file_path)?;
-            let line_count = content.lines().count();
-
-            self.write_file_header(output, relative, line_count)?;
-
-            output.write_all(content.as_bytes())?;
-
-            self.write_file_footer(output)?;
+        if workspace_manifest.is_workspace() {
+            return Ok(Some(parent.to_path_buf()));
         }
-
-        Ok(())
     }
 
-    fn write_file_header<W: Write>(&self, output: &mut W, path: &Path, lines: usize) -> Result<()> {
-        match self.args.format {
-            OutputFormat::Rust => writeln!(
-                output,
-                "\n// ----- {} ({} lines) -----\n",
-                path.display(),
-                lines
-            )?,
-            OutputFormat::Markdown => writeln!(output, "\n## `{}`\n\n```rust", path.display())?,
-        }
-        Ok(())
-    }
-
-    fn write_file_footer<W: Write>(&self, output: &mut W) -> Result<()> {
-        if self.args.format == OutputFormat::Markdown {
-            writeln!(output, "```")?;
-        }
-        Ok(())
-    }
+    Ok(None)
 }

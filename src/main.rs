@@ -2,25 +2,31 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::{EnvFilter, fmt};
 
-use args::Args;
+use config::Args;
 use project::Project;
 
-mod args;
+use crate::writer::SnapshotWriter;
+
+mod cargo_toml;
+mod config;
 mod manifest;
 mod project;
-mod structure;
+// mod renderer;
 mod walk;
 mod workspace;
+mod writer;
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
     init_tracing(&args)?;
 
-    let project = Project::from_current_dir(args)?;
-    let output_path = project.args.output_path();
+    let output_path = args.output_path();
+    let options = args.try_into()?;
 
-    project.collect_sources(&output_path)?;
+    let project = Project::from_current_dir()?;
+
+    SnapshotWriter::new(options).write(&project, &output_path)?;
 
     println!("✅ Snapshot saved to {}", output_path.display());
     Ok(())
@@ -29,7 +35,7 @@ fn main() -> Result<()> {
 /// Initialize tracing subscriber with configured log level
 fn init_tracing(args: &Args) -> Result<()> {
     let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&args.log_level));
+        EnvFilter::try_from_default_env().map_or(EnvFilter::new(&args.log_level), |f| f);
 
     fmt().with_env_filter(env_filter).init();
     Ok(())
