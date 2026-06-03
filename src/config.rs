@@ -79,7 +79,7 @@ pub(crate) struct Args {
     pub output: Option<String>,
 
     /// Output format (rust, rs, markdown, or md)
-    #[arg(short, long, default_value = "rust")]
+    #[arg(short, long, default_value = "markdown")]
     pub format: OutputFormat,
 
     /// Log level (error, warn, info, debug, trace)
