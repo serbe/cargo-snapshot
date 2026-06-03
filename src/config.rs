@@ -18,13 +18,8 @@ pub(crate) struct SnapshotOptions {
 impl SnapshotOptions {
     /// Determines whether a file path should be excluded based on options
     pub(crate) fn should_exclude(&self, path: &Path) -> bool {
-        if self.no_tests && is_test_file(path) {
-            return true;
-        }
-
-        self.exclude_patterns
-            .iter()
-            .any(|pattern| pattern.matches_path(path))
+        (self.no_tests && is_test_file(path))
+            || self.exclude_patterns.iter().any(|p| p.matches_path(path))
     }
 }
 
@@ -50,27 +45,6 @@ pub(crate) enum OutputFormat {
     #[default]
     Rust,
     Markdown,
-}
-
-impl std::str::FromStr for OutputFormat {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "rust" | "rs" => Ok(OutputFormat::Rust),
-            "markdown" | "md" => Ok(OutputFormat::Markdown),
-            _ => Err(format!("Unknown format: {s}")),
-        }
-    }
-}
-
-impl std::fmt::Display for OutputFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OutputFormat::Rust => write!(f, "rust"),
-            OutputFormat::Markdown => write!(f, "markdown"),
-        }
-    }
 }
 
 /// Cargo subcommand for creating a Rust code snapshot for AI analysis
@@ -104,9 +78,25 @@ pub(crate) struct Args {
 }
 
 impl Args {
-    /// Returns the output path with the appropriate file extension based on format
+    /// Returns the output path with appropriate extension.
+    ///
+    /// If the user specified a path with an explicit extension (e.g., `report.txt`),
+    /// it is respected and no extension is changed. Otherwise, the appropriate
+    /// extension (`.rs` for Rust format, `.md` for Markdown) is added.
+    ///
+    /// # Examples
+    /// - `--output snapshot --format rust` → `snapshot.rs`
+    /// - `--output report.txt --format rust` → `report.txt` (keeps .txt)
+    /// - `--output /tmp/out --format markdown` → `/tmp/out.md`
     pub(crate) fn output_path(&self) -> PathBuf {
         let path = Path::new(&self.output);
+
+        // If user explicitly specified an extension, respect it
+        if path.extension().is_some() {
+            return path.to_path_buf();
+        }
+
+        // Otherwise add appropriate extension based on format
         match self.format {
             OutputFormat::Markdown => path.with_extension("md"),
             OutputFormat::Rust => path.with_extension("rs"),
