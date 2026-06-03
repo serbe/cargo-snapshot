@@ -41,8 +41,8 @@ impl TryFrom<Args> for SnapshotOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum OutputFormat {
-    #[default]
     Rust,
+    #[default]
     Markdown,
 }
 
@@ -54,8 +54,7 @@ impl FromStr for OutputFormat {
             "rust" | "rs" => Ok(OutputFormat::Rust),
             "markdown" | "md" => Ok(OutputFormat::Markdown),
             _ => Err(format!(
-                "Unknown format: {}. Use 'rust', 'rs', 'markdown', or 'md'",
-                s
+                "Unknown format: {s}. Use 'rust', 'rs', 'markdown', or 'md'"
             )),
         }
     }
@@ -75,9 +74,9 @@ impl std::fmt::Display for OutputFormat {
 #[command(name = "cargo-snapshot")]
 #[command(about = "Save current crate or workspace into a single file for AI analysis")]
 pub(crate) struct Args {
-    /// Output file (default: snapshot.rs)
-    #[arg(short, long, default_value = "snapshot.rs")]
-    pub output: String,
+    /// Output file (default: snapshot.rs or snapshot.md depending on format)
+    #[arg(short, long)]
+    pub output: Option<String>,
 
     /// Output format (rust, rs, markdown, or md)
     #[arg(short, long, default_value = "rust")]
@@ -103,20 +102,24 @@ pub(crate) struct Args {
 impl Args {
     /// Returns the output path with appropriate extension.
     ///
-    /// If the user specified a path with an explicit extension (e.g., `report.txt`),
-    /// it is respected and no extension is changed. Otherwise, the appropriate
-    /// extension (`.rs` for Rust format, `.md` for Markdown) is added.
+    /// If the user specified a path, it is respected. Otherwise, the default
+    /// filename (snapshot) with the appropriate extension (.rs for Rust format,
+    /// .md for Markdown) is used.
     ///
     /// # Examples
     /// - `--output snapshot --format rust` → `snapshot.rs`
     /// - `--output report.txt --format rust` → `report.txt` (keeps .txt)
     /// - `--output /tmp/out --format markdown` → `/tmp/out.md`
+    /// - `--format markdown` (no --output) → `snapshot.md`
     pub(crate) fn output_path(&self) -> PathBuf {
-        let path = Path::new(&self.output);
+        let path = match &self.output {
+            Some(output) => Path::new(output).to_path_buf(),
+            None => Path::new("snapshot").to_path_buf(),
+        };
 
         // If user explicitly specified an extension, respect it
         if path.extension().is_some() {
-            return path.to_path_buf();
+            return path;
         }
 
         // Otherwise add appropriate extension based on format
