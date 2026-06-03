@@ -1,5 +1,6 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::BTreeMap;
+use toml::Value;
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct CargoToml {
@@ -7,13 +8,13 @@ pub(crate) struct CargoToml {
     pub workspace: Option<WorkspaceConfig>,
 
     #[serde(default)]
-    pub dependencies: BTreeMap<String, toml::Value>,
+    pub dependencies: BTreeMap<String, Value>,
 
     #[serde(rename = "dev-dependencies", default)]
-    pub dev_dependencies: BTreeMap<String, toml::Value>,
+    pub dev_dependencies: BTreeMap<String, Value>,
 
     #[serde(rename = "build-dependencies", default)]
-    pub build_dependencies: BTreeMap<String, toml::Value>,
+    pub build_dependencies: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -62,12 +63,14 @@ where
     #[serde(untagged)]
     enum InheritableField {
         Value(String),
-        Workspace { workspace: bool },
+        Workspace {
+            #[allow(dead_code)]
+            workspace: bool,
+        },
     }
 
     match InheritableField::deserialize(deserializer)? {
         InheritableField::Value(s) => Ok(Some(s)),
-        InheritableField::Workspace { workspace: true } => Ok(None),
-        InheritableField::Workspace { workspace: false } => Ok(None),
+        _ => Ok(None),
     }
 }
