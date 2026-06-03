@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use clap::Parser;
-use clap::ValueEnum;
 use glob::Pattern;
 
 use crate::walk::is_test_file;
@@ -39,14 +39,14 @@ impl TryFrom<Args> for SnapshotOptions {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum OutputFormat {
     #[default]
     Rust,
     Markdown,
 }
 
-impl std::str::FromStr for OutputFormat {
+impl FromStr for OutputFormat {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -54,8 +54,18 @@ impl std::str::FromStr for OutputFormat {
             "rust" | "rs" => Ok(OutputFormat::Rust),
             "markdown" | "md" => Ok(OutputFormat::Markdown),
             _ => Err(format!(
-                "Unknown format: {s}. Use 'rust', 'rs', 'markdown', or 'md'"
+                "Unknown format: {}. Use 'rust', 'rs', 'markdown', or 'md'",
+                s
             )),
+        }
+    }
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputFormat::Rust => write!(f, "rust"),
+            OutputFormat::Markdown => write!(f, "markdown"),
         }
     }
 }
@@ -70,7 +80,7 @@ pub(crate) struct Args {
     pub output: String,
 
     /// Output format (rust, rs, markdown, or md)
-    #[arg(short, long, default_value = "rust", value_parser = clap::value_parser!(OutputFormat))]
+    #[arg(short, long, default_value = "rust")]
     pub format: OutputFormat,
 
     /// Log level (error, warn, info, debug, trace)
