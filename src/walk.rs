@@ -11,7 +11,7 @@ pub(crate) fn is_hidden(path: &Path) -> bool {
 }
 
 /// Recursively collect all `.rs` files from a directory
-pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Result<Vec<PathBuf>> {
+pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Vec<PathBuf> {
     let mut files = WalkDir::new(dir)
         .into_iter()
         .filter_entry(|entry| options.include_hidden || !is_hidden(entry.path()))
@@ -23,34 +23,24 @@ pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Res
 
     files.sort();
 
-    Ok(files)
+    files
 }
 
 /// Finds the nearest Cargo.toml by traversing up parent directories
 pub(crate) fn find_nearest_cargo_toml(start_dir: &Path) -> Result<PathBuf> {
-    let mut current = start_dir
+    let start_dir = start_dir
         .canonicalize()
         .with_context(|| format!("failed to canonicalize path {}", start_dir.display()))?;
 
-    loop {
-        let cargo_toml = current.join("Cargo.toml");
+    for ancestor in start_dir.ancestors() {
+        let cargo_toml = ancestor.join("Cargo.toml");
         if cargo_toml.exists() {
             return Ok(cargo_toml);
-        }
-
-        // Если дошли до корня (родитель == текущий)
-        if let Some(parent) = current.parent() {
-            if parent == current {
-                break;
-            }
-            current = parent.to_path_buf();
-        } else {
-            break;
         }
     }
 
     anyhow::bail!(
-        "не найден Cargo.toml в {} или родительских директориях",
+        "Cargo.toml not found in {} or any parent directory",
         start_dir.display()
     );
 }

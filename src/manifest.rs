@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::{fs::read_to_string, path::PathBuf};
+use std::{collections::BTreeSet, fs::read_to_string, path::PathBuf};
 
 use crate::cargo_toml::CargoToml;
 
@@ -31,29 +31,32 @@ impl Manifest {
 
     /// Returns a sorted list of all dependency names from this manifest
     pub(crate) fn dependencies(&self) -> Vec<String> {
-        let mut deps = Vec::new();
-
-        deps.extend(self.cargo_toml.dependencies.keys().cloned());
-        deps.extend(self.cargo_toml.dev_dependencies.keys().cloned());
-        deps.extend(self.cargo_toml.build_dependencies.keys().cloned());
-        deps.sort();
-        deps.dedup();
-
-        deps
+        self.cargo_toml
+            .dependencies
+            .keys()
+            .chain(self.cargo_toml.dev_dependencies.keys())
+            .chain(self.cargo_toml.build_dependencies.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
-    /// Returns the crate name from package section or falls back to directory name
-    pub(crate) fn crate_name(&self) -> String {
+    /// Returns the crate name from package section
+    /// Panics: Should only be called on crate manifests (not workspace roots)
+    pub(crate) fn crate_name(&self) -> &str {
         self.cargo_toml
             .package
             .as_ref()
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| {
-                self.path
-                    .parent()
-                    .and_then(|p| p.file_name())
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "unnamed".into())
-            })
+            .map(|p| p.name.as_str())
+            .expect("crate manifest must have package.name")
+    }
+
+    pub(crate) fn workspace_name(&self) -> String {
+        self.path
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "workspace".to_owned())
     }
 }

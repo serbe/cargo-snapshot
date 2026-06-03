@@ -1,15 +1,49 @@
-use anyhow::Result;
-use std::path::PathBuf;
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
 
 use crate::manifest::Manifest;
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceMember {
     pub name: String,
+    pub src_dir: PathBuf,
     pub absolute_path: PathBuf,
 }
 
 impl WorkspaceMember {
+    /// Tries to load a workspace member from a directory path
+    fn try_load(path: PathBuf) -> Option<Self> {
+        let cargo_toml = path.join("Cargo.toml");
+
+        match Manifest::load(&cargo_toml) {
+            Ok(manifest) => Some(WorkspaceMember {
+                name: manifest.crate_name().to_owned(),
+                src_dir: path.join("src"),
+                absolute_path: path,
+            }),
+            Err(e) => {
+                tracing::warn!("Failed to load manifest at {}: {}", cargo_toml.display(), e);
+                None
+            }
+        }
+    }
+
+    /// Expands a single member pattern into a vector of paths
+    fn expand_pattern(pattern_path: PathBuf) -> Vec<PathBuf> {
+        if pattern_path.exists() && pattern_path.is_dir() {
+            return vec![pattern_path];
+        }
+
+        let pattern_str = pattern_path.to_string_lossy().to_string();
+        match glob::glob(&pattern_str) {
+            Ok(paths) => paths.filter_map(Result::ok).collect(),
+            Err(e) => {
+                tracing::warn!("Invalid glob pattern '{}': {}", pattern_str, e);
+                Vec::new()
+            }
+        }
+    }
+
     /// Collects all workspace members by resolving member patterns from workspace manifest
     pub(crate) fn collect(workspace_manifest: &Manifest) -> Result<Vec<Self>> {
         let Some(workspace) = &workspace_manifest.cargo_toml.workspace else {
@@ -19,66 +53,22 @@ impl WorkspaceMember {
         let workspace_root = workspace_manifest
             .path
             .parent()
-            .expect("Workspace manifest path has no parent");
-        let mut members = Vec::new();
+            .with_context(|| "workspace manifest has no parent directory".to_owned())?;
 
-        for pattern in &workspace.members {
-            let pattern_path = workspace_root.join(pattern);
-
-            if pattern_path.exists() && pattern_path.is_dir() {
-                let cargo_toml = pattern_path.join("Cargo.toml");
-                match Manifest::load(&cargo_toml) {
-                    Ok(manifest) => {
-                        members.push(WorkspaceMember {
-                            name: manifest.crate_name(),
-                            absolute_path: pattern_path,
-                        });
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to load manifest at {}: {}",
-                            cargo_toml.display(),
-                            e
-                        );
-                    }
-                }
-            } else {
-                let pattern_str = pattern_path.to_string_lossy();
-                match glob::glob(&pattern_str) {
-                    Ok(paths) => {
-                        for path in paths.flatten() {
-                            if path.join("Cargo.toml").exists() {
-                                match Manifest::load(path.join("Cargo.toml")) {
-                                    Ok(manifest) => {
-                                        members.push(WorkspaceMember {
-                                            name: manifest.crate_name(),
-                                            absolute_path: path,
-                                        });
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            "Failed to load manifest at {}: {}",
-                                            path.display(),
-                                            e
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Invalid glob pattern '{}': {}", pattern_str, e);
-                    }
-                }
-            }
-        }
+        let mut members: Vec<Self> = workspace
+            .members
+            .iter()
+            .flat_map(|pattern| Self::expand_pattern(workspace_root.join(pattern)))
+            .filter_map(Self::try_load)
+            .collect();
 
         members.sort_by(|a, b| a.name.cmp(&b.name));
+
         Ok(members)
     }
 
     /// Get source directory path
-    pub(crate) fn src_dir(&self) -> PathBuf {
-        self.absolute_path.join("src")
+    pub(crate) fn src_dir(&self) -> &Path {
+        &self.src_dir
     }
 }
