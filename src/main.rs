@@ -11,7 +11,7 @@ mod cargo_toml;
 mod config;
 mod manifest;
 mod project;
-// mod renderer;
+mod renderer;
 mod walk;
 mod workspace;
 mod writer;

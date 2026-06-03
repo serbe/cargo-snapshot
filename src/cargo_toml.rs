@@ -26,8 +26,6 @@ pub(crate) struct WorkspaceConfig {
 
     #[serde(default)]
     pub package: Option<WorkspacePackage>,
-    // #[serde(default)]
-    // pub dependencies: Option<BTreeMap<String, toml::Value>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -40,10 +38,6 @@ pub(crate) struct WorkspacePackage {
 
     #[serde(default)]
     pub license: Option<String>,
-    // #[serde(default)]
-    // pub description: Option<String>,
-    // #[serde(default)]
-    // pub resolver: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
