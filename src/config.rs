@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-
 use clap::ValueEnum;
 use glob::Pattern;
 
@@ -47,6 +46,20 @@ pub(crate) enum OutputFormat {
     Markdown,
 }
 
+impl std::str::FromStr for OutputFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "rust" | "rs" => Ok(OutputFormat::Rust),
+            "markdown" | "md" => Ok(OutputFormat::Markdown),
+            _ => Err(format!(
+                "Unknown format: {s}. Use 'rust', 'rs', 'markdown', or 'md'"
+            )),
+        }
+    }
+}
+
 /// Cargo subcommand for creating a Rust code snapshot for AI analysis
 #[derive(Parser, Debug)]
 #[command(name = "cargo-snapshot")]
@@ -56,8 +69,8 @@ pub(crate) struct Args {
     #[arg(short, long, default_value = "snapshot.rs")]
     pub output: String,
 
-    /// Output format (rust or markdown)
-    #[arg(short, long, default_value = "rust")]
+    /// Output format (rust, rs, markdown, or md)
+    #[arg(short, long, default_value = "rust", value_parser = clap::value_parser!(OutputFormat))]
     pub format: OutputFormat,
 
     /// Log level (error, warn, info, debug, trace)
