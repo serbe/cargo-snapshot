@@ -13,6 +13,7 @@ pub(crate) fn is_hidden(path: &Path) -> bool {
 /// Recursively collect all `.rs` files from a directory
 pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Vec<PathBuf> {
     let mut files = WalkDir::new(dir)
+        .follow_links(false)
         .into_iter()
         .filter_entry(|entry| options.include_hidden || !is_hidden(entry.path()))
         .filter_map(Result::ok)
