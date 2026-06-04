@@ -15,16 +15,20 @@ impl WorkspaceMember {
     fn try_load(path: PathBuf) -> Option<Self> {
         let cargo_toml = path.join("Cargo.toml");
 
-        match Manifest::load(&cargo_toml) {
-            Ok(manifest) => Some(WorkspaceMember {
-                name: manifest.crate_name().to_owned(),
+        if let Ok(manifest) = Manifest::load(&cargo_toml)
+            && let Ok(name) = manifest.crate_name()
+        {
+            Some(WorkspaceMember {
+                name: name.to_owned(),
                 src_dir: path.join("src"),
                 absolute_path: path,
-            }),
-            Err(e) => {
-                tracing::warn!("Failed to load manifest at {}: {}", cargo_toml.display(), e);
-                None
-            }
+            })
+        } else {
+            tracing::warn!(
+                "Failed to load manifest or manifest not have name: {}",
+                cargo_toml.display()
+            );
+            None
         }
     }
 

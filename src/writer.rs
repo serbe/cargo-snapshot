@@ -7,8 +7,9 @@ use std::{
 
 use crate::{
     config::SnapshotOptions,
+    metadata::Metadata,
     project::Project,
-    renderer::{Metadata, Renderer, create_renderer},
+    renderer::{Renderer, create_renderer},
     walk::{collect_source_files, is_hidden},
 };
 
@@ -38,9 +39,7 @@ impl SnapshotWriter {
     /// Writes metadata section with package/workspace information
     fn write_metadata(&self, out: &mut impl Write, project: &Project) -> Result<()> {
         let metadata = Metadata {
-            package: project.package(),
-            workspace: project.workspace_config(),
-            workspace_name: project.workspace_name(),
+            kind: project.metadata_kind()?,
             dependencies: project.dependencies(),
         };
 
@@ -71,42 +70,27 @@ impl SnapshotWriter {
 
     fn write_single_crate(&self, out: &mut impl Write, project: &Project) -> Result<()> {
         let manifest = project.manifest();
-
-        self.write_single_crate_structure(out, project)?;
+        self.write_project_structure(out, project)?; // ← единый метод
         self.write_crate_sources(
             out,
-            manifest.crate_name(),
+            manifest.crate_name()?,
             &project.root_dir().join("src"),
             project.root_dir(),
         )
-    }
-
-    fn write_single_crate_structure(&self, out: &mut impl Write, project: &Project) -> Result<()> {
-        let r = &self.renderer;
-        r.render_structure_begin(out)?;
-        r.render_structure_root(out, project.manifest().crate_name())?;
-        writeln!(out, "{}└── src/", r.tree_prefix())?;
-
-        let mut prefix = String::from("    ");
-        self.print_dir_tree(out, &project.root_dir().join("src"), &mut prefix)?;
-
-        r.render_structure_end(out)?;
-        writeln!(out)?;
-        Ok(())
     }
 
     fn write_project_structure(&self, out: &mut impl Write, project: &Project) -> Result<()> {
         let r = &self.renderer;
         r.render_structure_begin(out)?;
 
-        let root_name = project
-            .root_dir()
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        r.render_structure_root(out, &root_name)?;
-
         if let Some(members) = project.members() {
+            let root_name = project
+                .root_dir()
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            r.render_structure_root(out, &root_name)?;
+
             for member in members {
                 let relative = member
                     .absolute_path
@@ -119,6 +103,12 @@ impl SnapshotWriter {
                 let mut prefix = String::from("│   ");
                 self.print_dir_tree(out, member.src_dir(), &mut prefix)?;
             }
+        } else {
+            r.render_structure_root(out, project.manifest().crate_name()?)?;
+            writeln!(out, "{}└── src/", r.tree_prefix())?;
+
+            let mut prefix = String::from("    ");
+            self.print_dir_tree(out, &project.root_dir().join("src"), &mut prefix)?;
         }
 
         r.render_structure_end(out)?;

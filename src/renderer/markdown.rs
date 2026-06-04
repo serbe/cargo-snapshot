@@ -1,14 +1,10 @@
-use super::{Metadata, Renderer};
+use super::Renderer;
+use crate::{metadata::Metadata, renderer::metadata_formatter::MetadataFormatter};
 use anyhow::Result;
 use std::io::Write;
 
+#[derive(Default)]
 pub(crate) struct MarkdownRenderer;
-
-impl MarkdownRenderer {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-}
 
 impl Renderer for MarkdownRenderer {
     fn render_header(&self, out: &mut dyn Write) -> Result<()> {
@@ -20,57 +16,9 @@ impl Renderer for MarkdownRenderer {
 
     fn render_metadata(&self, out: &mut dyn Write, metadata: &Metadata<'_>) -> Result<()> {
         writeln!(out, "## Metadata\n")?;
+        let mut formatter = MetadataFormatter::new(out, "- ");
+        formatter.format(metadata)?;
 
-        if let Some(pkg) = metadata.package {
-            writeln!(out, "**Package:** `{}`", pkg.name)?;
-            if let Some(v) = &pkg.version {
-                writeln!(out, "- **Version:** `{v}`")?;
-            }
-            if let Some(e) = &pkg.edition {
-                writeln!(out, "- **Edition:** `{e}`")?;
-            }
-            if let Some(l) = &pkg.license {
-                writeln!(out, "- **License:** `{l}`")?;
-            }
-            if let Some(d) = &pkg.description {
-                writeln!(out, "- **Description:** {d}")?;
-            }
-        }
-
-        if let Some(ws) = metadata.workspace {
-            if let Some(name) = &metadata.workspace_name {
-                writeln!(out, "**Workspace:** `{name}`")?;
-            }
-            writeln!(out, "- **Type:** workspace")?;
-
-            if !ws.members.is_empty() {
-                writeln!(out, "- **Members:** `{}`", ws.members.join("`, `"))?;
-            }
-            if let Some(r) = &ws.resolver {
-                writeln!(out, "- **Resolver:** `{r}`")?;
-            }
-            if let Some(pkg) = &ws.package {
-                if let Some(v) = &pkg.version {
-                    writeln!(out, "- **Version:** `{v}`")?;
-                }
-                if let Some(e) = &pkg.edition {
-                    writeln!(out, "- **Edition:** `{e}`")?;
-                }
-                if let Some(l) = &pkg.license {
-                    writeln!(out, "- **License:** `{l}`")?;
-                }
-            }
-        }
-
-        if !metadata.dependencies.is_empty() {
-            writeln!(
-                out,
-                "- **Dependencies:** `{}`",
-                metadata.dependencies.join("`, `")
-            )?;
-        }
-
-        writeln!(out)?;
         Ok(())
     }
 

@@ -1,16 +1,12 @@
-use super::{Metadata, Renderer};
+use crate::{metadata::Metadata, renderer::metadata_formatter::MetadataFormatter};
+
+use super::Renderer;
 use anyhow::Result;
 use std::io::Write;
 
 /// Renders output in Rust comment format
 #[derive(Default)]
 pub(crate) struct RustRenderer;
-
-impl RustRenderer {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-}
 
 impl Renderer for RustRenderer {
     fn render_header(&self, out: &mut dyn Write) -> Result<()> {
@@ -23,53 +19,9 @@ impl Renderer for RustRenderer {
 
     fn render_metadata(&self, out: &mut dyn Write, metadata: &Metadata<'_>) -> Result<()> {
         writeln!(out, "// --- Metadata ---")?;
+        let mut formatter = MetadataFormatter::new(out, "// ");
+        formatter.format(metadata)?;
 
-        if let Some(pkg) = metadata.package {
-            writeln!(out, "// name: {}", pkg.name)?;
-            if let Some(v) = &pkg.version {
-                writeln!(out, "// version: {v}")?;
-            }
-            if let Some(e) = &pkg.edition {
-                writeln!(out, "// edition: {e}")?;
-            }
-            if let Some(l) = &pkg.license {
-                writeln!(out, "// license: {l}")?;
-            }
-            if let Some(d) = &pkg.description {
-                writeln!(out, "// description: {d}")?;
-            }
-        }
-
-        if let Some(ws) = metadata.workspace {
-            if let Some(name) = &metadata.workspace_name {
-                writeln!(out, "// workspace: {name}")?;
-            }
-            writeln!(out, "// type: workspace")?;
-
-            if !ws.members.is_empty() {
-                writeln!(out, "// members: {}", ws.members.join(", "))?;
-            }
-            if let Some(r) = &ws.resolver {
-                writeln!(out, "// resolver: {r}")?;
-            }
-            if let Some(pkg) = &ws.package {
-                if let Some(v) = &pkg.version {
-                    writeln!(out, "// version: {v}")?;
-                }
-                if let Some(e) = &pkg.edition {
-                    writeln!(out, "// edition: {e}")?;
-                }
-                if let Some(l) = &pkg.license {
-                    writeln!(out, "// license: {l}")?;
-                }
-            }
-        }
-
-        if !metadata.dependencies.is_empty() {
-            writeln!(out, "// dependencies: {}", metadata.dependencies.join(", "))?;
-        }
-
-        writeln!(out)?;
         Ok(())
     }
 
