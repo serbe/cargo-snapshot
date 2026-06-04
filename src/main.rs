@@ -10,6 +10,7 @@ use crate::writer::SnapshotWriter;
 mod cargo_toml;
 mod config;
 mod manifest;
+mod metadata;
 mod project;
 mod renderer;
 mod walk;
@@ -22,9 +23,10 @@ fn main() -> Result<()> {
     init_tracing(&args)?;
 
     let output_path = args.output_path();
+    let no_workspace = args.no_workspace;
     let options = args.try_into()?;
 
-    let project = Project::from_current_dir()?;
+    let project = Project::from_current_dir(no_workspace)?;
 
     SnapshotWriter::new(options).write(&project, &output_path)?;
 

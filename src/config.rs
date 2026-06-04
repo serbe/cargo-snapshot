@@ -97,6 +97,10 @@ pub(crate) struct Args {
     /// Include hidden files/directories
     #[arg(long)]
     pub include_hidden: bool,
+
+    /// Snapshot only the current crate, even if it belongs to a workspace
+    #[arg(long)]
+    pub no_workspace: bool,
 }
 
 impl Args {
