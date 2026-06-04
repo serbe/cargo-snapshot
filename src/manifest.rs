@@ -44,12 +44,17 @@ impl Manifest {
 
     /// Returns the crate name from package section
     /// Panics: Should only be called on crate manifests (not workspace roots)
-    pub(crate) fn crate_name(&self) -> &str {
+    pub(crate) fn crate_name(&self) -> Result<&str> {
         self.cargo_toml
             .package
             .as_ref()
             .map(|p| p.name.as_str())
-            .expect("crate manifest must have package.name")
+            .with_context(|| {
+                format!(
+                    "crate manifest missing [package] section or package.name in {}",
+                    self.path.display()
+                )
+            })
     }
 
     pub(crate) fn workspace_name(&self) -> String {
