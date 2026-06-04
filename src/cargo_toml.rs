@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::BTreeMap;
-use toml::Value;
+use toml::{Table, Value};
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct CargoToml {
@@ -63,14 +63,12 @@ where
     #[serde(untagged)]
     enum InheritableField {
         Value(String),
-        Workspace {
-            #[allow(dead_code)]
-            workspace: bool,
-        },
+        #[allow(dead_code)]
+        Workspace(Table),
     }
 
     match InheritableField::deserialize(deserializer)? {
         InheritableField::Value(s) => Ok(Some(s)),
-        _ => Ok(None),
+        InheritableField::Workspace(_) => Ok(None),
     }
 }
