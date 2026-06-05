@@ -1,5 +1,8 @@
-use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use crate::{MANIFEST_FILE, RUST_EXTENSION, SnapshotResult, error::SnapshotError};
+use std::{
+    fs::{DirEntry, read_dir},
+    path::{Path, PathBuf},
+};
 use walkdir::WalkDir;
 
 use crate::config::SnapshotOptions;
@@ -18,7 +21,7 @@ pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Vec
         .filter_entry(|entry| options.include_hidden || !is_hidden(entry.path()))
         .filter_map(Result::ok)
         .map(|entry| entry.into_path())
-        .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+        .filter(|path| path.extension().is_some_and(|e| e == RUST_EXTENSION))
         .filter(|path| !options.should_exclude(path))
         .collect::<Vec<_>>();
 
@@ -28,22 +31,17 @@ pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Vec
 }
 
 /// Finds the nearest Cargo.toml by traversing up parent directories
-pub(crate) fn find_nearest_cargo_toml(start_dir: &Path) -> Result<PathBuf> {
-    let start_dir = start_dir
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize path {}", start_dir.display()))?;
+pub(crate) fn find_nearest_cargo_toml(start_dir: &Path) -> SnapshotResult<PathBuf> {
+    let start_dir = start_dir.canonicalize()?;
 
     for ancestor in start_dir.ancestors() {
-        let cargo_toml = ancestor.join("Cargo.toml");
+        let cargo_toml = ancestor.join(MANIFEST_FILE);
         if cargo_toml.exists() {
             return Ok(cargo_toml);
         }
     }
 
-    anyhow::bail!(
-        "Cargo.toml not found in {} or any parent directory",
-        start_dir.display()
-    );
+    Err(SnapshotError::NoCargo(start_dir.display().to_string()))
 }
 
 /// Check if a file path corresponds to a test file
@@ -53,4 +51,22 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
             .file_stem()
             .and_then(|s| s.to_str())
             .is_some_and(|s| s == "test" || s.ends_with("_test"))
+}
+
+pub(crate) fn get_parent(path: &Path) -> SnapshotResult<&Path> {
+    path.parent()
+        .ok_or(SnapshotError::NoParent(path.display().to_string()))
+}
+
+pub(crate) fn read_directory(path: &Path) -> SnapshotResult<Vec<DirEntry>> {
+    read_dir(path)
+        .map_err(|e| SnapshotError::ReadDirectory {
+            path: path.to_path_buf(),
+            source: e,
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| SnapshotError::ReadDirectory {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }

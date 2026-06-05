@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::{MANIFEST_FILE, SOURCE_DIR, SnapshotResult, walk::get_parent};
 use std::path::{Path, PathBuf};
 
 use crate::manifest::Manifest;
@@ -13,14 +13,14 @@ pub(crate) struct WorkspaceMember {
 impl WorkspaceMember {
     /// Tries to load a workspace member from a directory path
     fn try_load(path: PathBuf) -> Option<Self> {
-        let cargo_toml = path.join("Cargo.toml");
+        let cargo_toml = path.join(MANIFEST_FILE);
 
         if let Ok(manifest) = Manifest::load(&cargo_toml)
             && let Ok(name) = manifest.crate_name()
         {
             Some(WorkspaceMember {
                 name: name.to_owned(),
-                src_dir: path.join("src"),
+                src_dir: path.join(SOURCE_DIR),
                 absolute_path: path,
             })
         } else {
@@ -49,15 +49,12 @@ impl WorkspaceMember {
     }
 
     /// Collects all workspace members by resolving member patterns from workspace manifest
-    pub(crate) fn collect(workspace_manifest: &Manifest) -> Result<Vec<Self>> {
+    pub(crate) fn collect(workspace_manifest: &Manifest) -> SnapshotResult<Vec<Self>> {
         let Some(workspace) = &workspace_manifest.cargo_toml.workspace else {
             return Ok(Vec::new());
         };
 
-        let workspace_root = workspace_manifest
-            .path
-            .parent()
-            .with_context(|| "workspace manifest has no parent directory".to_owned())?;
+        let workspace_root = get_parent(&workspace_manifest.path)?;
 
         let mut members: Vec<Self> = workspace
             .members

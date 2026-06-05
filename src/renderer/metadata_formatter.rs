@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::SnapshotResult;
 use std::io::Write;
 
 use super::Metadata;
@@ -17,67 +17,62 @@ impl<'a, W: ?Sized + Write> MetadataFormatter<'a, W> {
         Self { out, prefix }
     }
 
-    fn write_field(&mut self, key: &str, value: Option<&str>) -> Result<()> {
+    fn write_field(&mut self, key: &str, value: &str) -> SnapshotResult<()> {
+        writeln!(self.out, "{}{key}: {value}", self.prefix)?;
+        Ok(())
+    }
+
+    fn write_opt_field(&mut self, key: &str, value: Option<&str>) -> SnapshotResult<()> {
         if let Some(v) = value {
-            writeln!(self.out, "{}{key}: {v}", self.prefix)?;
+            self.write_field(key, v)?;
         }
         Ok(())
     }
 
-    pub(crate) fn format(&mut self, metadata: &Metadata<'_>) -> Result<()> {
+    fn write_vec_field(&mut self, key: &str, value: &[String]) -> SnapshotResult<()> {
+        if !value.is_empty() {
+            self.write_field(key, &value.join(", "))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn format(&mut self, metadata: &Metadata<'_>) -> SnapshotResult<()> {
         match &metadata.kind {
             MetadataKind::Crate { package } => {
                 self.format_package(package)?;
             }
             MetadataKind::Workspace { config, name } => {
-                self.format_workspace(config, Some(name))?;
+                self.format_workspace(config, name)?;
             }
         }
 
         if !metadata.dependencies.is_empty() {
-            self.format_dependencies(&metadata.dependencies)?;
+            self.write_vec_field("dependencies", &metadata.dependencies)?;
         }
 
         writeln!(self.out)?;
         Ok(())
     }
 
-    fn format_package(&mut self, pkg: &Package) -> Result<()> {
-        writeln!(self.out, "{}name: {}", self.prefix, pkg.name)?;
-        self.write_field("version", pkg.version.as_deref())?;
-        self.write_field("edition", pkg.edition.as_deref())?;
-        self.write_field("license", pkg.license.as_deref())?;
-        self.write_field("description", pkg.description.as_deref())?;
+    fn format_package(&mut self, pkg: &Package) -> SnapshotResult<()> {
+        self.write_field("name", &pkg.name)?;
+        self.write_opt_field("version", pkg.version.as_deref())?;
+        self.write_opt_field("edition", pkg.edition.as_deref())?;
+        self.write_opt_field("license", pkg.license.as_deref())?;
+        self.write_opt_field("description", pkg.description.as_deref())?;
         Ok(())
     }
 
-    fn format_workspace(&mut self, ws: &WorkspaceConfig, name: Option<&str>) -> Result<()> {
-        if let Some(name) = name {
-            self.write_field("workspace", Some(name))?;
-        }
-        writeln!(self.out, "{}type: workspace", self.prefix)?;
-
-        if !ws.members.is_empty() {
-            writeln!(
-                self.out,
-                "{}members: {}",
-                self.prefix,
-                ws.members.join(", ")
-            )?;
-        }
-        self.write_field("resolver", ws.resolver.as_deref())?;
+    fn format_workspace(&mut self, ws: &WorkspaceConfig, name: &str) -> SnapshotResult<()> {
+        self.write_field("workspace", name)?;
+        self.write_vec_field("members", &ws.members)?;
+        self.write_opt_field("resolver", ws.resolver.as_deref())?;
 
         if let Some(pkg) = &ws.package {
-            self.write_field("version", pkg.version.as_deref())?;
-            self.write_field("edition", pkg.edition.as_deref())?;
-            self.write_field("license", pkg.license.as_deref())?;
+            self.write_opt_field("version", pkg.version.as_deref())?;
+            self.write_opt_field("edition", pkg.edition.as_deref())?;
+            self.write_opt_field("license", pkg.license.as_deref())?;
         }
-        Ok(())
-    }
-
-    fn format_dependencies(&mut self, deps: &[String]) -> Result<()> {
-        let deps_str = deps.join(", ");
-        writeln!(self.out, "{}dependencies: {deps_str}", self.prefix)?;
         Ok(())
     }
 }

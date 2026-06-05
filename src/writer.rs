@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
+use crate::{RUST_EXTENSION, SOURCE_DIR, SnapshotResult, walk::read_directory};
 use std::{
-    fs::{DirEntry, File, read_dir, read_to_string},
+    fs::{DirEntry, File, read_to_string},
     io::Write,
     path::Path,
 };
@@ -26,7 +26,7 @@ impl SnapshotWriter {
     }
 
     /// Writes the complete snapshot to the output path
-    pub(crate) fn write(&self, project: &Project, output: &Path) -> Result<()> {
+    pub(crate) fn write(&self, project: &Project, output: &Path) -> SnapshotResult<()> {
         let mut file = File::create(output)?;
 
         self.renderer.render_header(&mut file)?;
@@ -37,7 +37,7 @@ impl SnapshotWriter {
     }
 
     /// Writes metadata section with package/workspace information
-    fn write_metadata(&self, out: &mut impl Write, project: &Project) -> Result<()> {
+    fn write_metadata(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
         let metadata = Metadata {
             kind: project.metadata_kind()?,
             dependencies: project.dependencies(),
@@ -46,7 +46,7 @@ impl SnapshotWriter {
         self.renderer.render_metadata(out, &metadata)
     }
 
-    fn write_sources(&self, out: &mut impl Write, project: &Project) -> Result<()> {
+    fn write_sources(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
         if project.is_workspace() {
             self.write_workspace(out, project)
         } else {
@@ -54,7 +54,7 @@ impl SnapshotWriter {
         }
     }
 
-    fn write_workspace(&self, out: &mut impl Write, project: &Project) -> Result<()> {
+    fn write_workspace(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
         let manifest = project.manifest();
         let members = project.members().expect("workspace must have members");
 
@@ -68,18 +68,22 @@ impl SnapshotWriter {
         Ok(())
     }
 
-    fn write_single_crate(&self, out: &mut impl Write, project: &Project) -> Result<()> {
+    fn write_single_crate(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
         let manifest = project.manifest();
         self.write_project_structure(out, project)?; // ← единый метод
         self.write_crate_sources(
             out,
             manifest.crate_name()?,
-            &project.root_dir().join("src"),
+            &project.root_dir().join(SOURCE_DIR),
             project.root_dir(),
         )
     }
 
-    fn write_project_structure(&self, out: &mut impl Write, project: &Project) -> Result<()> {
+    fn write_project_structure(
+        &self,
+        out: &mut impl Write,
+        project: &Project,
+    ) -> SnapshotResult<()> {
         let r = &self.renderer;
         r.render_structure_begin(out)?;
 
@@ -105,10 +109,10 @@ impl SnapshotWriter {
             }
         } else {
             r.render_structure_root(out, project.manifest().crate_name()?)?;
-            writeln!(out, "{}└── src/", r.tree_prefix())?;
+            writeln!(out, "{}└── {SOURCE_DIR}/", r.tree_prefix())?;
 
             let mut prefix = String::from("    ");
-            self.print_dir_tree(out, &project.root_dir().join("src"), &mut prefix)?;
+            self.print_dir_tree(out, &project.root_dir().join(SOURCE_DIR), &mut prefix)?;
         }
 
         r.render_structure_end(out)?;
@@ -122,7 +126,7 @@ impl SnapshotWriter {
         crate_name: &str,
         src_dir: &Path,
         root_dir: &Path,
-    ) -> Result<()> {
+    ) -> SnapshotResult<()> {
         self.renderer.render_crate_heading(out, crate_name)?;
 
         for path in collect_source_files(src_dir, &self.options) {
@@ -131,9 +135,13 @@ impl SnapshotWriter {
         Ok(())
     }
 
-    fn write_file(&self, out: &mut impl Write, root_dir: &Path, file_path: &Path) -> Result<()> {
-        let content = read_to_string(file_path)
-            .with_context(|| format!("failed to read file: {}", file_path.display()))?;
+    fn write_file(
+        &self,
+        out: &mut impl Write,
+        root_dir: &Path,
+        file_path: &Path,
+    ) -> SnapshotResult<()> {
+        let content = read_to_string(file_path)?;
         let relative = file_path.strip_prefix(root_dir).unwrap_or(file_path);
         let normalized = relative.to_str().unwrap_or("").replace('\\', "/");
 
@@ -141,10 +149,14 @@ impl SnapshotWriter {
         Ok(())
     }
 
-    fn print_dir_tree(&self, out: &mut impl Write, dir: &Path, prefix: &mut String) -> Result<()> {
+    fn print_dir_tree(
+        &self,
+        out: &mut impl Write,
+        dir: &Path,
+        prefix: &mut String,
+    ) -> SnapshotResult<()> {
         let pfx = self.renderer.tree_prefix();
-        let entries = read_sorted_entries(dir, self.options.include_hidden)
-            .with_context(|| format!("failed to read directory: {}", dir.display()))?;
+        let entries = read_sorted_entries(dir, self.options.include_hidden)?;
 
         for (i, entry) in entries.iter().enumerate() {
             let is_last = i == entries.len() - 1;
@@ -175,16 +187,15 @@ impl SnapshotWriter {
     }
 }
 
-fn read_sorted_entries(dir: &Path, include_hidden: bool) -> std::io::Result<Vec<DirEntry>> {
-    let mut entries: Vec<DirEntry> = read_dir(dir)?
-        .collect::<std::io::Result<Vec<_>>>()?
+fn read_sorted_entries(dir: &Path, include_hidden: bool) -> SnapshotResult<Vec<DirEntry>> {
+    let mut entries: Vec<DirEntry> = read_directory(dir)?
         .into_iter()
         .filter(|e| {
             let p = e.path();
             if !include_hidden && is_hidden(&p) {
                 return false;
             }
-            p.is_dir() || p.extension().is_some_and(|x| x == "rs")
+            p.is_dir() || p.extension().is_some_and(|x| x == RUST_EXTENSION)
         })
         .collect();
 
