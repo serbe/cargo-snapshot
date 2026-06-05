@@ -5,6 +5,7 @@ use clap::Parser;
 use glob::Pattern;
 
 use crate::walk::is_test_file;
+use crate::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION};
 
 #[derive(Debug)]
 pub(crate) struct SnapshotOptions {
@@ -51,10 +52,10 @@ impl FromStr for OutputFormat {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "rust" | "rs" => Ok(OutputFormat::Rust),
-            "markdown" | "md" => Ok(OutputFormat::Markdown),
+            "rust" | RUST_EXTENSION => Ok(OutputFormat::Rust),
+            "markdown" | MARKDOWN_EXTENSION => Ok(OutputFormat::Markdown),
             _ => Err(format!(
-                "Unknown format: {s}. Use 'rust', 'rs', 'markdown', or 'md'"
+                "Unknown format: {s}. Use 'rust', '{RUST_EXTENSION}', 'markdown', or '{MARKDOWN_EXTENSION}'"
             )),
         }
     }
@@ -118,7 +119,7 @@ impl Args {
     pub(crate) fn output_path(&self) -> PathBuf {
         let path = match &self.output {
             Some(output) => Path::new(output).to_path_buf(),
-            None => Path::new("snapshot").to_path_buf(),
+            None => Path::new(DEFAULT_SNAPSHOT_NAME).to_path_buf(),
         };
 
         // If user explicitly specified an extension, respect it
@@ -128,8 +129,8 @@ impl Args {
 
         // Otherwise add appropriate extension based on format
         match self.format {
-            OutputFormat::Markdown => path.with_extension("md"),
-            OutputFormat::Rust => path.with_extension("rs"),
+            OutputFormat::Markdown => path.with_extension(MARKDOWN_EXTENSION),
+            OutputFormat::Rust => path.with_extension(RUST_EXTENSION),
         }
     }
 }
