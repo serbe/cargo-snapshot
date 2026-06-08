@@ -1,5 +1,7 @@
 use crate::{RUST_EXTENSION, SOURCE_DIR, SnapshotResult, walk::read_directory};
 use std::{
+    cmp::Ordering,
+    ffi::OsStr,
     fs::{DirEntry, File, read_to_string},
     io::Write,
     path::Path,
@@ -91,7 +93,7 @@ impl SnapshotWriter {
             let root_name = project
                 .root_dir()
                 .file_name()
-                .unwrap_or_default()
+                .map_or(OsStr::new("workspace"), |name| name)
                 .to_string_lossy();
             r.render_structure_root(out, &root_name)?;
 
@@ -99,7 +101,7 @@ impl SnapshotWriter {
                 let relative = member
                     .absolute_path
                     .strip_prefix(project.root_dir())
-                    .unwrap_or(&member.absolute_path)
+                    .map_or(member.absolute_path.as_path(), |path| path)
                     .display()
                     .to_string();
                 r.render_structure_member(out, &relative)?;
@@ -116,7 +118,6 @@ impl SnapshotWriter {
         }
 
         r.render_structure_end(out)?;
-        writeln!(out)?;
         Ok(())
     }
 
@@ -142,8 +143,10 @@ impl SnapshotWriter {
         file_path: &Path,
     ) -> SnapshotResult<()> {
         let content = read_to_string(file_path)?;
-        let relative = file_path.strip_prefix(root_dir).unwrap_or(file_path);
-        let normalized = relative.to_str().unwrap_or("").replace('\\', "/");
+        let relative = file_path
+            .strip_prefix(root_dir)
+            .map_or(file_path, |dir| dir);
+        let normalized = relative.to_str().map_or("", |path| path).replace('\\', "/");
 
         self.renderer.render_file(out, &normalized, &content)?;
         Ok(())
@@ -204,8 +207,8 @@ fn read_sorted_entries(dir: &Path, include_hidden: bool) -> SnapshotResult<Vec<D
         let b_path = b.path();
 
         match (a_path.is_dir(), b_path.is_dir()) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
             _ => a.file_name().cmp(&b.file_name()),
         }
     });

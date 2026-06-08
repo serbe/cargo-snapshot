@@ -15,21 +15,22 @@ impl WorkspaceMember {
     fn try_load(path: PathBuf) -> Option<Self> {
         let cargo_toml = path.join(MANIFEST_FILE);
 
-        if let Ok(manifest) = Manifest::load(&cargo_toml)
-            && let Ok(name) = manifest.crate_name()
-        {
-            Some(WorkspaceMember {
-                name: name.to_owned(),
-                src_dir: path.join(SOURCE_DIR),
-                absolute_path: path,
+        Manifest::load(&cargo_toml)
+            .ok()
+            .and_then(|manifest| {
+                manifest.crate_name().ok().map(|name| WorkspaceMember {
+                    name: name.to_owned(),
+                    src_dir: path.join(SOURCE_DIR),
+                    absolute_path: path,
+                })
             })
-        } else {
-            tracing::warn!(
-                "Failed to load manifest or manifest not have name: {}",
-                cargo_toml.display()
-            );
-            None
-        }
+            .or_else(|| {
+                tracing::warn!(
+                    "Failed to load manifest or manifest not have name: {}",
+                    cargo_toml.display()
+                );
+                None
+            })
     }
 
     /// Expands a single member pattern into a vector of paths

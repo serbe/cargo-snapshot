@@ -46,7 +46,9 @@ impl Project {
 
         if !no_workspace && let Some(root) = find_workspace_root(get_parent(&manifest.path)?)? {
             let root_manifest = Manifest::load(root.join(MANIFEST_FILE))?;
-            return Self::from_workspace(root_manifest);
+            if root_manifest.is_workspace() {
+                return Self::from_workspace(root_manifest);
+            }
         }
 
         Ok(Self::single_crate(dir, manifest))

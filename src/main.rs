@@ -4,7 +4,9 @@ use tracing_subscriber::{EnvFilter, fmt};
 use config::Args;
 use project::Project;
 
-pub(crate) use crate::constants::*;
+pub(crate) use crate::constants::{
+    DEFAULT_SNAPSHOT_NAME, MANIFEST_FILE, MARKDOWN_EXTENSION, RUST_EXTENSION, SOURCE_DIR,
+};
 pub(crate) use crate::error::SnapshotResult;
 use crate::writer::SnapshotWriter;
 

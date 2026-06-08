@@ -47,10 +47,7 @@ pub(crate) fn find_nearest_cargo_toml(start_dir: &Path) -> SnapshotResult<PathBu
 /// Check if a file path corresponds to a test file
 pub(crate) fn is_test_file(path: &Path) -> bool {
     path.components().any(|c| c.as_os_str() == "tests")
-        || path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .is_some_and(|s| s == "test" || s.ends_with("_test"))
+        || path.file_stem().is_some_and(|s| s == "tests")
 }
 
 pub(crate) fn get_parent(path: &Path) -> SnapshotResult<&Path> {

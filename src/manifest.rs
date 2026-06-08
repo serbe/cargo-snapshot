@@ -50,9 +50,10 @@ impl Manifest {
 
     pub(crate) fn workspace_name(&self) -> String {
         get_parent(&self.path)
-            .map_or(None, |p| p.file_name())
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "workspace".to_owned())
+            .ok()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy())
+            .map_or_else(|| "workspace".to_owned(), |name| name.to_string())
     }
 
     pub(crate) fn package(&self) -> SnapshotResult<&Package> {

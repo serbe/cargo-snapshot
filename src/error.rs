@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub(crate) enum SnapshotError {
     #[error("std io error: {0}")]
-    StdIO(#[from] std::io::Error),
+    IO(#[from] std::io::Error),
 
     #[error("Failed to parse TOML config: {0}")]
     TomlParse(#[from] toml::de::Error),
