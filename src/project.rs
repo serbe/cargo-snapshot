@@ -1,13 +1,16 @@
-use crate::MANIFEST_FILE;
-use crate::error::SnapshotResult;
-use std::env::current_dir;
-use std::path::{Path, PathBuf};
+use crate::{
+    constants::{MANIFEST_FILE, SOURCE_DIR},
+    error::SnapshotResult,
+    manifest::Manifest,
+    metadata::MetadataKind,
+    walk::{find_nearest_cargo_toml, get_parent},
+    workspace::WorkspaceMember,
+};
 
-// use crate::cargo_toml::{Package, WorkspaceConfig};
-use crate::manifest::Manifest;
-use crate::metadata::MetadataKind;
-use crate::walk::{find_nearest_cargo_toml, get_parent};
-use crate::workspace::WorkspaceMember;
+use std::{
+    env::current_dir,
+    path::{Path, PathBuf},
+};
 
 /// Represents a Rust project (either a standalone crate or a workspace)
 #[derive(Debug)]
@@ -44,11 +47,10 @@ impl Project {
             return Self::from_workspace(manifest);
         }
 
-        if !no_workspace && let Some(root) = find_workspace_root(get_parent(&manifest.path)?)? {
-            let root_manifest = Manifest::load(root.join(MANIFEST_FILE))?;
-            if root_manifest.is_workspace() {
-                return Self::from_workspace(root_manifest);
-            }
+        if !no_workspace
+            && let Some(root_manifest) = find_workspace_root(get_parent(&manifest.path)?)?
+        {
+            return Self::from_workspace(root_manifest);
         }
 
         Ok(Self::single_crate(dir, manifest))
@@ -118,18 +120,31 @@ impl Project {
             }),
         }
     }
+
+    pub(crate) fn crate_targets(&self) -> SnapshotResult<Vec<(String, PathBuf)>> {
+        match self {
+            Self::Workspace { members, .. } => Ok(members
+                .iter()
+                .map(|m| (m.name.clone(), m.src_dir.clone()))
+                .collect()),
+            Self::Crate { root_dir, manifest } => Ok(vec![(
+                manifest.crate_name()?.to_owned(),
+                root_dir.join(SOURCE_DIR),
+            )]),
+        }
+    }
 }
 
 /// Finds the workspace root by traversing up parent directories
-pub(crate) fn find_workspace_root(dir: &Path) -> SnapshotResult<Option<PathBuf>> {
+pub(crate) fn find_workspace_root(dir: &Path) -> SnapshotResult<Option<Manifest>> {
     for ancestor in dir.ancestors().skip(1) {
         let cargo_toml = ancestor.join(MANIFEST_FILE);
         if !cargo_toml.exists() {
             continue;
         }
-
-        if Manifest::load(&cargo_toml)?.is_workspace() {
-            return Ok(Some(ancestor.to_path_buf()));
+        let manifest = Manifest::load(&cargo_toml)?;
+        if manifest.is_workspace() {
+            return Ok(Some(manifest));
         }
     }
     Ok(None)

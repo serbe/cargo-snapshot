@@ -1,6 +1,6 @@
 [package]
 name = "cargo-snapshot"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 description = "A Cargo subcommand that fuses a Rust workspace into a single file"
 repository = "https://github.com/serbe/snapshot"

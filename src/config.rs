@@ -1,17 +1,24 @@
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use clap::Parser;
 use glob::Pattern;
 
-use crate::walk::is_test_file;
-use crate::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION};
+use crate::{
+    constants::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION},
+    walk::is_test_file,
+};
 
 #[derive(Debug)]
 pub(crate) struct SnapshotOptions {
     pub format: OutputFormat,
     pub include_hidden: bool,
     pub no_tests: bool,
+    pub include_cargo_toml: bool,
+    pub include_workspace_toml: bool,
+    pub include_readme: bool,
     pub exclude_patterns: Vec<Pattern>,
 }
 
@@ -31,6 +38,9 @@ impl TryFrom<Args> for SnapshotOptions {
             format: args.format,
             include_hidden: args.include_hidden,
             no_tests: args.no_tests,
+            include_cargo_toml: args.include_cargo_toml,
+            include_workspace_toml: args.include_workspace_toml,
+            include_readme: args.include_readme,
             exclude_patterns: args
                 .exclude
                 .into_iter()
@@ -102,6 +112,18 @@ pub(crate) struct Args {
     /// Snapshot only the current crate, even if it belongs to a workspace
     #[arg(long)]
     pub no_workspace: bool,
+
+    /// Include crate Cargo.toml in snapshot
+    #[arg(long)]
+    pub include_cargo_toml: bool,
+
+    /// Include workspace Cargo.toml in snapshot
+    #[arg(long)]
+    pub include_workspace_toml: bool,
+
+    /// Include README.md files in snapshot
+    #[arg(long)]
+    pub include_readme: bool,
 }
 
 impl Args {

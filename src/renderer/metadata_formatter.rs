@@ -1,10 +1,9 @@
-use crate::SnapshotResult;
 use std::io::Write;
 
-use super::Metadata;
 use crate::{
+    SnapshotResult,
     cargo_toml::{Package, WorkspaceConfig},
-    metadata::MetadataKind,
+    metadata::{Metadata, MetadataKind},
 };
 
 pub(crate) struct MetadataFormatter<'a, W: Write + ?Sized> {

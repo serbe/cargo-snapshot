@@ -1,11 +1,10 @@
 use crate::{
     SnapshotResult,
-    cargo_toml::{Package, WorkspaceConfig},
+    cargo_toml::{CargoToml, Package, WorkspaceConfig},
     error::SnapshotError,
+    walk::get_parent,
 };
 use std::{collections::BTreeSet, fs::read_to_string, path::PathBuf};
-
-use crate::{cargo_toml::CargoToml, walk::get_parent};
 
 /// Represents a Cargo.toml manifest file
 #[derive(Clone, Debug)]
@@ -42,8 +41,8 @@ impl Manifest {
             .collect()
     }
 
-    /// Returns the crate name from package section
-    /// Panics: Should only be called on crate manifests (not workspace roots)
+    /// Returns the crate name from package section.
+    /// Returns an error if called on a workspace-root manifest without [package].
     pub(crate) fn crate_name(&self) -> SnapshotResult<&str> {
         self.package().map(|p| p.name.as_str())
     }
@@ -59,18 +58,14 @@ impl Manifest {
     pub(crate) fn package(&self) -> SnapshotResult<&Package> {
         match &self.cargo_toml.package {
             Some(package) => Ok(package),
-            None => Err(SnapshotError::NoPackage(self.path())),
+            None => Err(SnapshotError::NoPackage(self.path.display().to_string())),
         }
     }
 
     pub(crate) fn workspace(&self) -> SnapshotResult<&WorkspaceConfig> {
         match &self.cargo_toml.workspace {
             Some(workspace) => Ok(workspace),
-            None => Err(SnapshotError::NoWorkspace(self.path())),
+            None => Err(SnapshotError::NoWorkspace(self.path.display().to_string())),
         }
-    }
-
-    pub(crate) fn path(&self) -> String {
-        self.path.display().to_string()
     }
 }

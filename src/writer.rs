@@ -1,18 +1,18 @@
-use crate::{RUST_EXTENSION, SOURCE_DIR, SnapshotResult, walk::read_directory};
+use crate::{
+    SnapshotResult,
+    config::SnapshotOptions,
+    constants::SOURCE_DIR,
+    metadata::Metadata,
+    project::Project,
+    renderer::{Renderer, create_renderer},
+    walk::{collect_source_files, is_hidden, is_rust_file, normalize_path, read_directory},
+};
 use std::{
     cmp::Ordering,
     ffi::OsStr,
     fs::{DirEntry, File, read_to_string},
     io::Write,
     path::Path,
-};
-
-use crate::{
-    config::SnapshotOptions,
-    metadata::Metadata,
-    project::Project,
-    renderer::{Renderer, create_renderer},
-    walk::{collect_source_files, is_hidden},
 };
 
 /// Main writer for generating snapshot output
@@ -34,6 +34,7 @@ impl SnapshotWriter {
         self.renderer.render_header(&mut file)?;
         self.write_metadata(&mut file, project)?;
         self.write_sources(&mut file, project)?;
+        self.write_additional_files(&mut file, project)?;
 
         Ok(())
     }
@@ -49,36 +50,18 @@ impl SnapshotWriter {
     }
 
     fn write_sources(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
-        if project.is_workspace() {
-            self.write_workspace(out, project)
-        } else {
-            self.write_single_crate(out, project)
+        if let Some(name) = project
+            .is_workspace()
+            .then(|| project.manifest().workspace_name())
+        {
+            self.renderer.render_workspace_heading(out, &name)?;
         }
-    }
-
-    fn write_workspace(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
-        let manifest = project.manifest();
-        let members = project.members().expect("workspace must have members");
-
-        self.renderer
-            .render_workspace_heading(out, &manifest.workspace_name())?;
         self.write_project_structure(out, project)?;
 
-        for member in members {
-            self.write_crate_sources(out, &member.name, member.src_dir(), project.root_dir())?;
+        for (name, src_dir) in project.crate_targets()? {
+            self.write_crate_sources(out, &name, &src_dir, project.root_dir())?;
         }
         Ok(())
-    }
-
-    fn write_single_crate(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
-        let manifest = project.manifest();
-        self.write_project_structure(out, project)?; // ← единый метод
-        self.write_crate_sources(
-            out,
-            manifest.crate_name()?,
-            &project.root_dir().join(SOURCE_DIR),
-            project.root_dir(),
-        )
     }
 
     fn write_project_structure(
@@ -98,16 +81,11 @@ impl SnapshotWriter {
             r.render_structure_root(out, &root_name)?;
 
             for member in members {
-                let relative = member
-                    .absolute_path
-                    .strip_prefix(project.root_dir())
-                    .map_or(member.absolute_path.as_path(), |path| path)
-                    .display()
-                    .to_string();
-                r.render_structure_member(out, &relative)?;
+                let normalize = normalize_path(&member.absolute_path, project.root_dir());
+                r.render_structure_member(out, &normalize)?;
 
                 let mut prefix = String::from("│   ");
-                self.print_dir_tree(out, member.src_dir(), &mut prefix)?;
+                self.print_dir_tree(out, &member.src_dir, &mut prefix)?;
             }
         } else {
             r.render_structure_root(out, project.manifest().crate_name()?)?;
@@ -136,6 +114,26 @@ impl SnapshotWriter {
         Ok(())
     }
 
+    fn write_manifest(
+        &self,
+        out: &mut impl Write,
+        path: &Path,
+        label: &str,
+        project: &Project,
+    ) -> SnapshotResult<()> {
+        if !path.exists() {
+            return Ok(());
+        }
+
+        let content = read_to_string(path)?;
+        let normalize = normalize_path(path, project.root_dir());
+        writeln!(out, "\n## {label}: `{normalize}`\n")?;
+        writeln!(out, "```toml")?;
+        writeln!(out, "{content}")?;
+        writeln!(out, "```")?;
+        Ok(())
+    }
+
     fn write_file(
         &self,
         out: &mut impl Write,
@@ -143,10 +141,7 @@ impl SnapshotWriter {
         file_path: &Path,
     ) -> SnapshotResult<()> {
         let content = read_to_string(file_path)?;
-        let relative = file_path
-            .strip_prefix(root_dir)
-            .map_or(file_path, |dir| dir);
-        let normalized = relative.to_str().map_or("", |path| path).replace('\\', "/");
+        let normalized = normalize_path(file_path, root_dir);
 
         self.renderer.render_file(out, &normalized, &content)?;
         Ok(())
@@ -188,6 +183,48 @@ impl SnapshotWriter {
         }
         Ok(())
     }
+
+    fn write_additional_files(
+        &self,
+        out: &mut impl Write,
+        project: &Project,
+    ) -> SnapshotResult<()> {
+        // Per-crate manifests
+        if self.options.include_cargo_toml {
+            for (name, src_dir) in project.crate_targets()? {
+                let Some(crate_root) = src_dir.parent() else {
+                    continue;
+                };
+                let manifest_path = crate_root.join("Cargo.toml");
+                self.write_manifest(
+                    out,
+                    &manifest_path,
+                    &format!("Cargo.toml for {name}"),
+                    project,
+                )?;
+            }
+        }
+
+        // Workspace manifest
+        if self.options.include_workspace_toml {
+            let ws_manifest = project.root_dir().join("Cargo.toml");
+            self.write_manifest(out, &ws_manifest, "Workspace Cargo.toml", project)?;
+        }
+
+        // README.md
+        if self.options.include_readme {
+            let readme = project.root_dir().join("README.md");
+            if readme.exists() {
+                let content = read_to_string(&readme)?;
+                writeln!(out, "\n## README.md\n")?;
+                writeln!(out, "```markdown")?;
+                writeln!(out, "{content}")?;
+                writeln!(out, "```")?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn read_sorted_entries(dir: &Path, include_hidden: bool) -> SnapshotResult<Vec<DirEntry>> {
@@ -198,7 +235,7 @@ fn read_sorted_entries(dir: &Path, include_hidden: bool) -> SnapshotResult<Vec<D
             if !include_hidden && is_hidden(&p) {
                 return false;
             }
-            p.is_dir() || p.extension().is_some_and(|x| x == RUST_EXTENSION)
+            p.is_dir() || is_rust_file(&p)
         })
         .collect();
 
