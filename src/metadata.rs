@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::cargo_toml::{Package, WorkspaceConfig};
 
 /// Represents the kind of metadata (either a crate or a workspace)
@@ -7,7 +9,7 @@ pub(crate) enum MetadataKind<'a> {
     },
     Workspace {
         config: &'a WorkspaceConfig,
-        name: String,
+        name: Cow<'a, str>,
     },
 }
 

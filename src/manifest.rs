@@ -4,7 +4,7 @@ use crate::{
     error::SnapshotError,
     walk::get_parent,
 };
-use std::{collections::BTreeSet, fs::read_to_string, path::PathBuf};
+use std::{borrow::Cow, collections::BTreeSet, fs::read_to_string, path::PathBuf};
 
 /// Represents a Cargo.toml manifest file
 #[derive(Clone, Debug)]
@@ -47,12 +47,12 @@ impl Manifest {
         self.package().map(|p| p.name.as_str())
     }
 
-    pub(crate) fn workspace_name(&self) -> String {
+    pub(crate) fn workspace_name(&self) -> Cow<'_, str> {
         get_parent(&self.path)
             .ok()
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy())
-            .map_or_else(|| "workspace".to_owned(), |name| name.to_string())
+            .map_or(Cow::Borrowed("workspace"), |name| name)
     }
 
     pub(crate) fn package(&self) -> SnapshotResult<&Package> {
