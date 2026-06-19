@@ -17,7 +17,10 @@ pub(crate) fn is_hidden(path: &Path) -> bool {
 }
 
 /// Recursively collect all `.rs` files from a directory
-pub(crate) fn collect_source_files(dir: &Path, options: &SnapshotOptions) -> Vec<PathBuf> {
+pub(crate) fn collect_rust_sources(
+    dir: impl AsRef<Path>,
+    options: &SnapshotOptions,
+) -> Vec<PathBuf> {
     let mut files = WalkDir::new(dir)
         .follow_links(false)
         .into_iter()
@@ -38,9 +41,9 @@ pub(crate) fn find_nearest_cargo_toml(start_dir: &Path) -> SnapshotResult<PathBu
     let start_dir = start_dir.canonicalize()?;
 
     for ancestor in start_dir.ancestors() {
-        let cargo_toml = ancestor.join(MANIFEST_FILE);
-        if cargo_toml.exists() {
-            return Ok(cargo_toml);
+        let cargo_manifest = ancestor.join(MANIFEST_FILE);
+        if cargo_manifest.exists() {
+            return Ok(cargo_manifest);
         }
     }
 
@@ -76,7 +79,7 @@ pub(crate) fn is_rust_file(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == RUST_EXTENSION)
 }
 
-pub(crate) fn normalize_path(path: &Path, root: &Path) -> String {
+pub(crate) fn relative_display_path(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .map_or(path, |strip_path| strip_path)
         .to_str()

@@ -1,6 +1,6 @@
 [package]
 name = "cargo-snapshot"
-version = "0.6.2"
+version = "0.6.4"
 edition = "2024"
 description = "A Cargo subcommand that fuses a Rust workspace into a single file"
 repository = "https://github.com/serbe/snapshot"
@@ -13,6 +13,7 @@ categories = ["development-tools", "development-tools::cargo-plugins"]
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
 glob = "0.3"
+once_cell = "1.21"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 toml = "1.1"

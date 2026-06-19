@@ -1,29 +1,27 @@
 use crate::{
     SnapshotResult,
     constants::{MANIFEST_FILE, SOURCE_DIR},
-    manifest::Manifest,
-    walk::get_parent,
+    fs::walk::get_parent,
+    model::manifest::Manifest,
 };
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceMember {
     pub name: String,
-    pub src_dir: PathBuf,
-    pub absolute_path: PathBuf,
+    pub root_dir: PathBuf,
 }
 
 impl WorkspaceMember {
     /// Tries to load a workspace member from a directory path
     fn try_load(path: PathBuf) -> Option<Self> {
-        let cargo_toml = path.join(MANIFEST_FILE);
+        let cargo_manifest = path.join(MANIFEST_FILE);
 
-        match Manifest::load(&cargo_toml) {
+        match Manifest::load(&cargo_manifest) {
             Ok(manifest) => match manifest.crate_name() {
                 Ok(name) => Some(WorkspaceMember {
-                    name: name.to_owned(),
-                    src_dir: path.join(SOURCE_DIR),
-                    absolute_path: path,
+                    name,
+                    root_dir: path,
                 }),
                 Err(e) => {
                     tracing::warn!("Member missing package name in {}: {}", path.display(), e);
@@ -35,6 +33,10 @@ impl WorkspaceMember {
                 None
             }
         }
+    }
+
+    pub(crate) fn src_dir(&self) -> PathBuf {
+        self.root_dir.join(SOURCE_DIR)
     }
 
     /// Expands a single member pattern into a vector of paths
@@ -54,8 +56,8 @@ impl WorkspaceMember {
     }
 
     /// Collects all workspace members by resolving member patterns from workspace manifest
-    pub(crate) fn collect(workspace_manifest: &Manifest) -> SnapshotResult<Vec<Self>> {
-        let Some(workspace) = &workspace_manifest.cargo_toml.workspace else {
+    pub(crate) fn collect_members(workspace_manifest: &Manifest) -> SnapshotResult<Vec<Self>> {
+        let Some(workspace) = &workspace_manifest.cargo_manifest.workspace else {
             return Ok(Vec::new());
         };
 

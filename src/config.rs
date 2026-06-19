@@ -8,10 +8,10 @@ use glob::Pattern;
 
 use crate::{
     constants::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION},
-    walk::is_test_file,
+    fs::walk::is_test_file,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SnapshotOptions {
     pub format: OutputFormat,
     pub include_hidden: bool,
@@ -67,15 +67,6 @@ impl FromStr for OutputFormat {
             _ => Err(format!(
                 "Unknown format: {s}. Use 'rust', '{RUST_EXTENSION}', 'markdown', or '{MARKDOWN_EXTENSION}'"
             )),
-        }
-    }
-}
-
-impl std::fmt::Display for OutputFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OutputFormat::Rust => write!(f, "rust"),
-            OutputFormat::Markdown => write!(f, "markdown"),
         }
     }
 }

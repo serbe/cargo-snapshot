@@ -2,21 +2,16 @@ use clap::Parser;
 use tracing_subscriber::{EnvFilter, fmt};
 
 use config::Args;
-use project::Project;
 
 pub(crate) use crate::error::SnapshotResult;
-use crate::writer::SnapshotWriter;
+use crate::{model::project::Project, writer::SnapshotWriter};
 
-mod cargo_toml;
 mod config;
 mod constants;
 mod error;
-mod manifest;
-mod metadata;
-mod project;
+mod fs;
+mod model;
 mod renderer;
-mod walk;
-mod workspace;
 mod writer;
 
 fn main() -> SnapshotResult<()> {

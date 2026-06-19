@@ -3,9 +3,10 @@ use std::collections::BTreeMap;
 use toml::{Table, Value};
 
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct CargoToml {
+pub(crate) struct CargoManifest {
     pub package: Option<Package>,
-    pub workspace: Option<WorkspaceConfig>,
+    #[serde(default)]
+    pub workspace: Option<WorkspaceManifest>,
 
     #[serde(default)]
     pub dependencies: BTreeMap<String, Value>,
@@ -18,7 +19,7 @@ pub(crate) struct CargoToml {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct WorkspaceConfig {
+pub(crate) struct WorkspaceManifest {
     #[serde(default)]
     pub members: Vec<String>,
 
@@ -26,24 +27,12 @@ pub(crate) struct WorkspaceConfig {
     pub resolver: Option<String>,
 
     #[serde(default)]
-    pub package: Option<WorkspacePackage>,
-}
-
-#[derive(Clone, Debug, Deserialize, Default)]
-pub(crate) struct WorkspacePackage {
-    #[serde(default)]
-    pub version: Option<String>,
-
-    #[serde(default)]
-    pub edition: Option<String>,
-
-    #[serde(default)]
-    pub license: Option<String>,
+    pub package: Option<Package>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Package {
-    pub name: String,
+    pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_inheritable_field")]
     pub version: Option<String>,
     #[serde(default, deserialize_with = "deserialize_inheritable_field")]

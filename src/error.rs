@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::PoisonError};
 
 use thiserror::Error;
 
@@ -22,14 +22,20 @@ pub(crate) enum SnapshotError {
     #[error("Crate manifest missing [package] section or package.name in {0}")]
     NoPackage(String),
 
-    #[error("Workspace manifest missing [workspace] section in {0}")]
-    NoWorkspace(String),
-
     #[error("Failed to read directory {path}: {source}")]
     ReadDirectory {
         path: PathBuf,
         source: std::io::Error,
     },
+
+    #[error("Failed to acquire lock for manifest cache: {0}")]
+    CacheLock(String),
+}
+
+impl<T> From<PoisonError<T>> for SnapshotError {
+    fn from(err: PoisonError<T>) -> Self {
+        SnapshotError::CacheLock(err.to_string())
+    }
 }
 
 pub(crate) type SnapshotResult<T> = Result<T, SnapshotError>;
