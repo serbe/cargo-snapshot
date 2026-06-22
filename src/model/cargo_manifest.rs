@@ -1,25 +1,8 @@
 use serde::{Deserialize, Deserializer};
-use std::collections::BTreeMap;
-use toml::{Table, Value};
+use toml::Table;
 
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct CargoManifest {
-    pub package: Option<Package>,
-    #[serde(default)]
-    pub workspace: Option<WorkspaceManifest>,
-
-    #[serde(default)]
-    pub dependencies: BTreeMap<String, Value>,
-
-    #[serde(rename = "dev-dependencies", default)]
-    pub dev_dependencies: BTreeMap<String, Value>,
-
-    #[serde(rename = "build-dependencies", default)]
-    pub build_dependencies: BTreeMap<String, Value>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub(crate) struct WorkspaceManifest {
+pub(crate) struct WorkspaceConfig {
     #[serde(default)]
     pub members: Vec<String>,
 

@@ -44,7 +44,6 @@ impl Renderer for MarkdownRenderer {
 
     fn render_crate_heading(&self, out: &mut dyn Write, name: &str) -> SnapshotResult<()> {
         writeln!(out, "## Crate: {name}")?;
-        // writeln!(out)?;
         Ok(())
     }
 

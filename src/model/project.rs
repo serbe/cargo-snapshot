@@ -103,7 +103,7 @@ impl Project {
     }
 
     pub(crate) fn metadata_kind(&self) -> SnapshotResult<ProjectKind<'_>> {
-        if let Some(workspace) = &self.manifest.cargo_manifest.workspace {
+        if let Some(workspace) = &self.manifest.data.workspace {
             return Ok(ProjectKind::Workspace {
                 config: workspace,
                 name: self.workspace_name.as_deref().unwrap_or("workspace"),

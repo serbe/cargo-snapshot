@@ -43,7 +43,6 @@ impl Renderer for RustRenderer {
 
     fn render_crate_heading(&self, out: &mut dyn Write, name: &str) -> SnapshotResult<()> {
         writeln!(out, "// ========== CRATE: {name} ==========")?;
-        // writeln!(out)?;
         Ok(())
     }
 

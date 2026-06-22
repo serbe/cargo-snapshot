@@ -3,7 +3,7 @@ use std::io::Write;
 use crate::{
     SnapshotResult,
     model::{
-        cargo_manifest::{Package, WorkspaceManifest},
+        cargo_manifest::{Package, WorkspaceConfig},
         metadata::{Metadata, ProjectKind},
     },
 };
@@ -64,7 +64,7 @@ impl<'a, W: ?Sized + Write> MetadataFormatter<'a, W> {
         Ok(())
     }
 
-    fn format_workspace(&mut self, ws: &WorkspaceManifest, name: &str) -> SnapshotResult<()> {
+    fn format_workspace(&mut self, ws: &WorkspaceConfig, name: &str) -> SnapshotResult<()> {
         self.write_field("workspace", name)?;
         self.write_vec_field("members", &ws.members)?;
         self.write_opt_field("resolver", ws.resolver.as_deref())?;

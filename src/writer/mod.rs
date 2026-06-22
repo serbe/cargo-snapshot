@@ -29,7 +29,6 @@ impl SnapshotGenerator {
         self.renderer.render_header(&mut file)?;
         self.write_metadata(&mut file, project)?;
 
-        // Используем модули для разных частей
         tree::write_project_structure(&mut file, project, &self.options, &*self.renderer)?;
         sources::write_sources(&mut file, project, &self.options, &*self.renderer)?;
         manifests::write_extra_files(&mut file, project, &self.options, &*self.renderer)?;

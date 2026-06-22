@@ -22,7 +22,6 @@ fn main() -> SnapshotResult<()> {
     let output_path = args.output_path();
     let no_workspace = args.no_workspace;
     let options = args.try_into()?;
-
     let project = Project::from_current_dir(no_workspace)?;
 
     SnapshotGenerator::new(options).write(&project, &output_path)?;

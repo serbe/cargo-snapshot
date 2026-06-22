@@ -57,7 +57,7 @@ impl WorkspaceMember {
 
     /// Collects all workspace members by resolving member patterns from workspace manifest
     pub(crate) fn collect_members(workspace_manifest: &Manifest) -> SnapshotResult<Vec<Self>> {
-        let Some(workspace) = &workspace_manifest.cargo_manifest.workspace else {
+        let Some(workspace) = &workspace_manifest.data.workspace else {
             return Ok(Vec::new());
         };
 

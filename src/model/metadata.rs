@@ -1,11 +1,11 @@
-use crate::model::cargo_manifest::{Package, WorkspaceManifest};
+use crate::model::cargo_manifest::{Package, WorkspaceConfig};
 
 pub(crate) enum ProjectKind<'a> {
     Crate {
         package: &'a Package,
     },
     Workspace {
-        config: &'a WorkspaceManifest,
+        config: &'a WorkspaceConfig,
         name: &'a str,
     },
 }

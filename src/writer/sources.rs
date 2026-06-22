@@ -2,7 +2,7 @@ use crate::{
     SnapshotResult,
     config::SnapshotConfig,
     fs::walk::{collect_source_files, relative_path},
-    model::project::Project,
+    model::{crate_target::CrateTarget, project::Project},
     renderer::Renderer,
 };
 use std::{fs::read_to_string, io::Write, path::Path};
@@ -28,7 +28,7 @@ pub(crate) fn write_sources(
 /// Writes sources for a single crate target
 fn write_crate_sources(
     out: &mut impl Write,
-    target: &crate::model::crate_target::CrateTarget,
+    target: &CrateTarget,
     root_dir: &Path,
     options: &SnapshotConfig,
     renderer: &dyn Renderer,

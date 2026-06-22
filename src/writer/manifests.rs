@@ -27,13 +27,11 @@ pub(crate) fn write_extra_files(
         }
     }
 
-    // Workspace manifest
     if options.include_workspace_toml {
         let ws_manifest = project.root_dir.join("Cargo.toml");
         write_manifest(out, &ws_manifest, "Workspace Cargo.toml", project)?;
     }
 
-    // README.md
     if options.include_readme {
         write_readme(out, project)?;
     }

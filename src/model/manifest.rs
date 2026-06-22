@@ -5,7 +5,7 @@ use crate::{
     SnapshotResult,
     error::SnapshotError,
     fs::walk::get_parent,
-    model::cargo_manifest::{CargoManifest, Package, WorkspaceManifest},
+    model::cargo_manifest::{Package, WorkspaceConfig},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -17,23 +17,23 @@ use std::{
 static MANIFEST_CACHE: LazyLock<Mutex<HashMap<PathBuf, Manifest>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-// #[derive(Clone, Debug, Deserialize)]
-// pub(crate) struct RawManifest {
-//     pub package: Option<Package>,
-//     #[serde(default)]
-//     pub workspace: Option<WorkspaceManifest>,
-//     #[serde(default)]
-//     pub dependencies: BTreeMap<String, Value>,
-//     #[serde(rename = "dev-dependencies", default)]
-//     pub dev_dependencies: BTreeMap<String, Value>,
-//     #[serde(rename = "build-dependencies", default)]
-//     pub build_dependencies: BTreeMap<String, Value>,
-// }
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ManifestData {
+    pub package: Option<Package>,
+    #[serde(default)]
+    pub workspace: Option<WorkspaceConfig>,
+    #[serde(default)]
+    pub dependencies: BTreeMap<String, Value>,
+    #[serde(rename = "dev-dependencies", default)]
+    pub dev_dependencies: BTreeMap<String, Value>,
+    #[serde(rename = "build-dependencies", default)]
+    pub build_dependencies: BTreeMap<String, Value>,
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct Manifest {
     pub path: PathBuf,
-    pub cargo_manifest: CargoManifest,
+    pub data: ManifestData,
 }
 
 impl Manifest {
@@ -45,11 +45,10 @@ impl Manifest {
         }
 
         let content = read_to_string(&path)?;
-        let cargo_manifest: CargoManifest = toml::from_str(&content)?;
-
+        let data = toml::from_str(&content)?;
         let manifest = Self {
             path: path.clone(),
-            cargo_manifest,
+            data,
         };
 
         MANIFEST_CACHE.lock()?.insert(path, manifest.clone());
@@ -58,15 +57,15 @@ impl Manifest {
     }
 
     pub(crate) fn is_workspace(&self) -> bool {
-        self.cargo_manifest.workspace.is_some()
+        self.data.workspace.is_some()
     }
 
     pub(crate) fn dependencies(&self) -> Vec<String> {
-        self.cargo_manifest
+        self.data
             .dependencies
             .keys()
-            .chain(self.cargo_manifest.dev_dependencies.keys())
-            .chain(self.cargo_manifest.build_dependencies.keys())
+            .chain(self.data.dev_dependencies.keys())
+            .chain(self.data.build_dependencies.keys())
             .cloned()
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -101,7 +100,7 @@ impl Manifest {
     }
 
     pub(crate) fn package(&self) -> SnapshotResult<&Package> {
-        match &self.cargo_manifest.package {
+        match &self.data.package {
             Some(package) => Ok(package),
             None => Err(SnapshotError::NoPackage(self.path.display().to_string())),
         }
