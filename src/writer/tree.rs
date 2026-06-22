@@ -1,7 +1,7 @@
 use crate::writer::read_sorted_entries;
 use crate::{
-    SnapshotResult, config::SnapshotOptions, constants::SOURCE_DIR,
-    fs::walk::relative_display_path, model::project::Project, renderer::Renderer,
+    SnapshotResult, config::SnapshotConfig, constants::SOURCE_DIR, fs::walk::relative_path,
+    model::project::Project, renderer::Renderer,
 };
 use std::{ffi::OsStr, io::Write, path::Path};
 
@@ -9,7 +9,7 @@ use std::{ffi::OsStr, io::Write, path::Path};
 pub(crate) fn write_project_structure(
     out: &mut impl Write,
     project: &Project,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     renderer.render_structure_begin(out)?;
@@ -28,7 +28,7 @@ pub(crate) fn write_project_structure(
 fn write_workspace_tree(
     out: &mut impl Write,
     project: &Project,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     let root_name = project
@@ -40,7 +40,7 @@ fn write_workspace_tree(
     renderer.render_structure_root(out, &root_name)?;
 
     for target in project.targets() {
-        let normalize = relative_display_path(&target.src_dir, &project.root_dir);
+        let normalize = relative_path(&target.src_dir, &project.root_dir);
         renderer.render_structure_member(out, &normalize)?;
 
         let mut prefix = String::from("│   ");
@@ -54,7 +54,7 @@ fn write_workspace_tree(
 fn write_crate_tree(
     out: &mut impl Write,
     project: &Project,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     let crate_name = project.manifest.crate_name()?;
@@ -79,7 +79,7 @@ pub(crate) fn print_dir_tree(
     out: &mut impl Write,
     dir: &Path,
     prefix: &mut String,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     let pfx = renderer.tree_prefix();

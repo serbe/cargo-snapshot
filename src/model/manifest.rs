@@ -1,11 +1,14 @@
+use serde::Deserialize;
+use toml::Value;
+
 use crate::{
     SnapshotResult,
     error::SnapshotError,
     fs::walk::get_parent,
-    model::cargo_manifest::{CargoManifest, Package},
+    model::cargo_manifest::{CargoManifest, Package, WorkspaceManifest},
 };
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs::read_to_string,
     path::PathBuf,
     sync::{LazyLock, Mutex},
@@ -13,6 +16,19 @@ use std::{
 
 static MANIFEST_CACHE: LazyLock<Mutex<HashMap<PathBuf, Manifest>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// #[derive(Clone, Debug, Deserialize)]
+// pub(crate) struct RawManifest {
+//     pub package: Option<Package>,
+//     #[serde(default)]
+//     pub workspace: Option<WorkspaceManifest>,
+//     #[serde(default)]
+//     pub dependencies: BTreeMap<String, Value>,
+//     #[serde(rename = "dev-dependencies", default)]
+//     pub dev_dependencies: BTreeMap<String, Value>,
+//     #[serde(rename = "build-dependencies", default)]
+//     pub build_dependencies: BTreeMap<String, Value>,
+// }
 
 #[derive(Clone, Debug)]
 pub(crate) struct Manifest {

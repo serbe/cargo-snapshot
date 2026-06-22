@@ -1,9 +1,9 @@
 use crate::{
     constants::{MANIFEST_FILE, SOURCE_DIR},
     error::{SnapshotError, SnapshotResult},
-    fs::walk::{find_nearest_cargo_toml, get_parent},
+    fs::walk::{get_parent, locate_manifest},
     model::{
-        crate_target::CrateTarget, manifest::Manifest, metadata::MetadataKind,
+        crate_target::CrateTarget, manifest::Manifest, metadata::ProjectKind,
         workspace::WorkspaceMember,
     },
 };
@@ -24,7 +24,7 @@ impl Project {
     /// Create a new project from current directory
     pub(crate) fn from_current_dir(no_workspace: bool) -> SnapshotResult<Self> {
         let current_dir = current_dir()?;
-        let cargo_toml_path = find_nearest_cargo_toml(&current_dir)?;
+        let cargo_toml_path = locate_manifest(&current_dir)?;
         let project_dir = get_parent(&cargo_toml_path)?;
 
         Self::discover(project_dir, no_workspace)
@@ -102,15 +102,15 @@ impl Project {
         self.workspace_name.is_some()
     }
 
-    pub(crate) fn metadata_kind(&self) -> SnapshotResult<MetadataKind<'_>> {
+    pub(crate) fn metadata_kind(&self) -> SnapshotResult<ProjectKind<'_>> {
         if let Some(workspace) = &self.manifest.cargo_manifest.workspace {
-            return Ok(MetadataKind::Workspace {
+            return Ok(ProjectKind::Workspace {
                 config: workspace,
                 name: self.workspace_name.as_deref().unwrap_or("workspace"),
             });
         }
 
-        Ok(MetadataKind::Crate {
+        Ok(ProjectKind::Crate {
             package: self.manifest.package()?,
         })
     }
@@ -119,11 +119,11 @@ impl Project {
 /// Finds the workspace root by traversing up parent directories
 pub(crate) fn find_workspace_root(dir: &Path) -> SnapshotResult<Option<Manifest>> {
     for ancestor in dir.ancestors().skip(1) {
-        let cargo_manifest = ancestor.join(MANIFEST_FILE);
-        if !cargo_manifest.exists() {
+        let manifest_path = ancestor.join(MANIFEST_FILE);
+        if !manifest_path.exists() {
             continue;
         }
-        let manifest = Manifest::load(&cargo_manifest)?;
+        let manifest = Manifest::load(&manifest_path)?;
         if manifest.is_workspace() {
             return Ok(Some(manifest));
         }

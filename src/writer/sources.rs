@@ -1,7 +1,7 @@
 use crate::{
     SnapshotResult,
-    config::SnapshotOptions,
-    fs::walk::{collect_rust_sources, relative_display_path},
+    config::SnapshotConfig,
+    fs::walk::{collect_source_files, relative_path},
     model::project::Project,
     renderer::Renderer,
 };
@@ -11,7 +11,7 @@ use std::{fs::read_to_string, io::Write, path::Path};
 pub(crate) fn write_sources(
     out: &mut impl Write,
     project: &Project,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     if let Some(name) = &project.workspace_name {
@@ -30,12 +30,12 @@ fn write_crate_sources(
     out: &mut impl Write,
     target: &crate::model::crate_target::CrateTarget,
     root_dir: &Path,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     renderer.render_crate_heading(out, &target.name)?;
 
-    for path in collect_rust_sources(&target.src_dir, options) {
+    for path in collect_source_files(&target.src_dir, options) {
         write_file(out, root_dir, &path, renderer)?;
     }
 
@@ -50,7 +50,7 @@ pub(crate) fn write_file(
     renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     let content = read_to_string(file_path)?;
-    let normalized = relative_display_path(file_path, root_dir);
+    let normalized = relative_path(file_path, root_dir);
 
     renderer.render_file(out, &normalized, &content)?;
     Ok(())

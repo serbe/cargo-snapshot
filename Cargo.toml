@@ -1,6 +1,6 @@
 [package]
 name = "cargo-snapshot"
-version = "0.6.4"
+version = "0.7.0"
 edition = "2024"
 description = "A Cargo subcommand that fuses a Rust workspace into a single file"
 repository = "https://github.com/serbe/snapshot"
@@ -23,3 +23,10 @@ walkdir = "2.5"
 [[bin]]
 name = "cargo-snapshot"
 path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

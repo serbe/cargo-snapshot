@@ -28,7 +28,6 @@ impl Renderer for MarkdownRenderer {
 
     fn render_metadata(&self, out: &mut dyn Write, metadata: &Metadata<'_>) -> SnapshotResult<()> {
         let mut formatter = MetadataFormatter::new(out, self.metadata_prefix());
-
         formatter.format(metadata)
     }
 
@@ -37,18 +36,15 @@ impl Renderer for MarkdownRenderer {
         writeln!(out, "## `{path}`")?;
         writeln!(out)?;
         writeln!(out, "```rust")?;
-
         out.write_all(content.as_bytes())?;
-
         writeln!(out)?;
         writeln!(out, "```")?;
-
         Ok(())
     }
 
     fn render_crate_heading(&self, out: &mut dyn Write, name: &str) -> SnapshotResult<()> {
         writeln!(out, "## Crate: {name}")?;
-        writeln!(out)?;
+        // writeln!(out)?;
         Ok(())
     }
 

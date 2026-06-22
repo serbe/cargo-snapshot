@@ -1,6 +1,6 @@
 use crate::model::cargo_manifest::{Package, WorkspaceManifest};
 
-pub(crate) enum MetadataKind<'a> {
+pub(crate) enum ProjectKind<'a> {
     Crate {
         package: &'a Package,
     },
@@ -11,6 +11,6 @@ pub(crate) enum MetadataKind<'a> {
 }
 
 pub(crate) struct Metadata<'a> {
-    pub kind: MetadataKind<'a>,
+    pub kind: ProjectKind<'a>,
     pub dependencies: Vec<String>,
 }

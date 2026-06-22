@@ -1,6 +1,6 @@
 use crate::{
     SnapshotResult,
-    config::SnapshotOptions,
+    config::SnapshotConfig,
     model::project::Project,
     renderer::{Renderer, create_renderer},
 };
@@ -11,13 +11,13 @@ pub(crate) mod sources;
 pub(crate) mod tree;
 
 /// Main writer for generating snapshot output
-pub(crate) struct SnapshotWriter {
-    options: SnapshotOptions,
+pub(crate) struct SnapshotGenerator {
+    options: SnapshotConfig,
     renderer: Box<dyn Renderer>,
 }
 
-impl SnapshotWriter {
-    pub(crate) fn new(options: SnapshotOptions) -> Self {
+impl SnapshotGenerator {
+    pub(crate) fn new(options: SnapshotConfig) -> Self {
         let renderer = create_renderer(options.format);
         Self { options, renderer }
     }
@@ -30,9 +30,9 @@ impl SnapshotWriter {
         self.write_metadata(&mut file, project)?;
 
         // Используем модули для разных частей
-        sources::write_sources(&mut file, project, &self.options, &*self.renderer)?;
         tree::write_project_structure(&mut file, project, &self.options, &*self.renderer)?;
-        manifests::write_additional_files(&mut file, project, &self.options, &*self.renderer)?;
+        sources::write_sources(&mut file, project, &self.options, &*self.renderer)?;
+        manifests::write_extra_files(&mut file, project, &self.options, &*self.renderer)?;
 
         Ok(())
     }

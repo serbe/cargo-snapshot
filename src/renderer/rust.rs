@@ -28,40 +28,33 @@ impl Renderer for RustRenderer {
 
     fn render_metadata(&self, out: &mut dyn Write, metadata: &Metadata<'_>) -> SnapshotResult<()> {
         let mut formatter = MetadataFormatter::new(out, self.metadata_prefix());
-
         formatter.format(metadata)
     }
 
     fn render_file(&self, out: &mut dyn Write, path: &str, content: &str) -> SnapshotResult<()> {
         let lines = content.lines().count();
-
         writeln!(out)?;
         writeln!(out, "// ----- {path} ({lines} lines) -----")?;
         writeln!(out)?;
-
         out.write_all(content.as_bytes())?;
-
         writeln!(out)?;
         Ok(())
     }
 
     fn render_crate_heading(&self, out: &mut dyn Write, name: &str) -> SnapshotResult<()> {
         writeln!(out, "// ========== CRATE: {name} ==========")?;
-
-        writeln!(out)?;
+        // writeln!(out)?;
         Ok(())
     }
 
     fn render_workspace_heading(&self, out: &mut dyn Write, name: &str) -> SnapshotResult<()> {
         writeln!(out, "// ========== WORKSPACE: {name} ==========")?;
-
         writeln!(out)?;
         Ok(())
     }
 
     fn render_structure_begin(&self, out: &mut dyn Write) -> SnapshotResult<()> {
         writeln!(out, "// ========== PROJECT STRUCTURE ==========")?;
-
         writeln!(out)?;
         Ok(())
     }

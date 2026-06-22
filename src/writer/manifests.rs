@@ -1,14 +1,14 @@
 use crate::{
-    SnapshotResult, config::SnapshotOptions, fs::walk::relative_display_path,
-    model::project::Project, renderer::Renderer,
+    SnapshotResult, config::SnapshotConfig, fs::walk::relative_path, model::project::Project,
+    renderer::Renderer,
 };
 use std::{fs::read_to_string, io::Write, path::Path};
 
 /// Writes additional files like Cargo.toml and README.md
-pub(crate) fn write_additional_files(
+pub(crate) fn write_extra_files(
     out: &mut impl Write,
     project: &Project,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
     _renderer: &dyn Renderer,
 ) -> SnapshotResult<()> {
     // Per-crate manifests
@@ -53,7 +53,7 @@ fn write_manifest(
     }
 
     let content = read_to_string(path)?;
-    let normalize = relative_display_path(path, &project.root_dir);
+    let normalize = relative_path(path, &project.root_dir);
 
     writeln!(out, "\n## {label}: `{normalize}`\n")?;
     writeln!(out, "```toml")?;

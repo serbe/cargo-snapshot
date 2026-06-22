@@ -4,7 +4,7 @@ use crate::{
     SnapshotResult,
     model::{
         cargo_manifest::{Package, WorkspaceManifest},
-        metadata::{Metadata, MetadataKind},
+        metadata::{Metadata, ProjectKind},
     },
 };
 
@@ -39,10 +39,10 @@ impl<'a, W: ?Sized + Write> MetadataFormatter<'a, W> {
 
     pub(crate) fn format(&mut self, metadata: &Metadata<'_>) -> SnapshotResult<()> {
         match &metadata.kind {
-            MetadataKind::Crate { package } => {
+            ProjectKind::Crate { package } => {
                 self.format_package(package)?;
             }
-            MetadataKind::Workspace { config, name } => {
+            ProjectKind::Workspace { config, name } => {
                 self.format_workspace(config, name)?;
             }
         }

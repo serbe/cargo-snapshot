@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub(crate) struct SnapshotOptions {
+pub(crate) struct SnapshotConfig {
     pub format: OutputFormat,
     pub include_hidden: bool,
     pub no_tests: bool,
@@ -22,15 +22,15 @@ pub(crate) struct SnapshotOptions {
     pub exclude_patterns: Vec<Pattern>,
 }
 
-impl SnapshotOptions {
+impl SnapshotConfig {
     /// Determines whether a file path should be excluded based on options
-    pub(crate) fn should_exclude(&self, path: &Path) -> bool {
+    pub(crate) fn is_excluded(&self, path: &Path) -> bool {
         (self.no_tests && is_test_file(path))
             || self.exclude_patterns.iter().any(|p| p.matches_path(path))
     }
 }
 
-impl TryFrom<Args> for SnapshotOptions {
+impl TryFrom<Args> for SnapshotConfig {
     type Error = glob::PatternError;
 
     fn try_from(args: Args) -> Result<Self, Self::Error> {

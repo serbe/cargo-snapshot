@@ -4,7 +4,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use config::Args;
 
 pub(crate) use crate::error::SnapshotResult;
-use crate::{model::project::Project, writer::SnapshotWriter};
+use crate::{model::project::Project, writer::SnapshotGenerator};
 
 mod config;
 mod constants;
@@ -25,7 +25,7 @@ fn main() -> SnapshotResult<()> {
 
     let project = Project::from_current_dir(no_workspace)?;
 
-    SnapshotWriter::new(options).write(&project, &output_path)?;
+    SnapshotGenerator::new(options).write(&project, &output_path)?;
 
     println!("✅ Snapshot saved to {}", output_path.display());
     Ok(())

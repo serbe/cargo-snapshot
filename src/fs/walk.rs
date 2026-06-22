@@ -1,6 +1,6 @@
 use crate::{
     SnapshotResult,
-    config::SnapshotOptions,
+    config::SnapshotConfig,
     constants::{MANIFEST_FILE, RUST_EXTENSION},
     error::SnapshotError,
 };
@@ -17,33 +17,33 @@ pub(crate) fn is_hidden(path: &Path) -> bool {
 }
 
 /// Recursively collect all `.rs` files from a directory
-pub(crate) fn collect_rust_sources(
+pub(crate) fn collect_source_files(
     dir: impl AsRef<Path>,
-    options: &SnapshotOptions,
+    options: &SnapshotConfig,
 ) -> Vec<PathBuf> {
-    let mut files = WalkDir::new(dir)
+    let mut source_files = WalkDir::new(dir)
         .follow_links(false)
         .into_iter()
         .filter_entry(|entry| options.include_hidden || !is_hidden(entry.path()))
         .filter_map(Result::ok)
         .map(walkdir::DirEntry::into_path)
         .filter(|path| is_rust_file(path))
-        .filter(|path| !options.should_exclude(path))
+        .filter(|path| !options.is_excluded(path))
         .collect::<Vec<_>>();
 
-    files.sort();
+    source_files.sort();
 
-    files
+    source_files
 }
 
 /// Finds the nearest Cargo.toml by traversing up parent directories
-pub(crate) fn find_nearest_cargo_toml(start_dir: &Path) -> SnapshotResult<PathBuf> {
+pub(crate) fn locate_manifest(start_dir: &Path) -> SnapshotResult<PathBuf> {
     let start_dir = start_dir.canonicalize()?;
 
     for ancestor in start_dir.ancestors() {
-        let cargo_manifest = ancestor.join(MANIFEST_FILE);
-        if cargo_manifest.exists() {
-            return Ok(cargo_manifest);
+        let manifest_path = ancestor.join(MANIFEST_FILE);
+        if manifest_path.exists() {
+            return Ok(manifest_path);
         }
     }
 
@@ -79,7 +79,7 @@ pub(crate) fn is_rust_file(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == RUST_EXTENSION)
 }
 
-pub(crate) fn relative_display_path(path: &Path, root: &Path) -> String {
+pub(crate) fn relative_path(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .map_or(path, |strip_path| strip_path)
         .to_str()
