@@ -25,8 +25,8 @@ pub(crate) fn collect_rust_sources(
         .follow_links(false)
         .into_iter()
         .filter_entry(|entry| options.include_hidden || !is_hidden(entry.path()))
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.into_path())
+        .filter_map(Result::ok)
+        .map(walkdir::DirEntry::into_path)
         .filter(|path| is_rust_file(path))
         .filter(|path| !options.should_exclude(path))
         .collect::<Vec<_>>();

@@ -17,7 +17,7 @@ mod writer;
 fn main() -> SnapshotResult<()> {
     let args = Args::parse();
 
-    init_tracing(&args)?;
+    init_tracing(&args);
 
     let output_path = args.output_path();
     let no_workspace = args.no_workspace;
@@ -32,10 +32,9 @@ fn main() -> SnapshotResult<()> {
 }
 
 /// Initialize tracing subscriber with configured log level
-fn init_tracing(args: &Args) -> SnapshotResult<()> {
+fn init_tracing(args: &Args) {
     let env_filter =
         EnvFilter::try_from_default_env().map_or(EnvFilter::new(&args.log_level), |f| f);
 
     fmt().with_env_filter(env_filter).init();
-    Ok(())
 }

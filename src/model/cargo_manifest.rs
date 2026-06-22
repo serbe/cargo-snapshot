@@ -52,7 +52,7 @@ where
     #[serde(untagged)]
     enum InheritableField {
         Value(String),
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "need for serde")]
         Workspace(Table),
     }
 

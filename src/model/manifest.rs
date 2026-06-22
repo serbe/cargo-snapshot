@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-
 use crate::{
     SnapshotResult,
     error::SnapshotError,
@@ -10,11 +8,11 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs::read_to_string,
     path::PathBuf,
-    sync::Mutex,
+    sync::{LazyLock, Mutex},
 };
 
-static MANIFEST_CACHE: Lazy<Mutex<HashMap<PathBuf, Manifest>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static MANIFEST_CACHE: LazyLock<Mutex<HashMap<PathBuf, Manifest>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone, Debug)]
 pub(crate) struct Manifest {
@@ -64,7 +62,7 @@ impl Manifest {
             .name
             .as_deref()
             .filter(|name| !name.is_empty())
-            .map(|name| name.to_owned())
+            .map(ToOwned::to_owned)
             .or_else(|| {
                 if self.is_workspace() {
                     get_parent(&self.path)

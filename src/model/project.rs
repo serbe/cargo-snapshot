@@ -36,13 +36,13 @@ impl Project {
         let manifest = Manifest::load(manifest_path)?;
 
         if manifest.is_workspace() {
-            return Self::from_workspace(manifest);
+            return Self::from_workspace(&manifest);
         }
 
         if !no_workspace
             && let Some(root_manifest) = find_workspace_root(get_parent(&manifest.path)?)?
         {
-            return Self::from_workspace(root_manifest);
+            return Self::from_workspace(&root_manifest);
         }
 
         Self::single_crate(dir, manifest)
@@ -68,10 +68,10 @@ impl Project {
     }
 
     /// Creates a project from a workspace manifest
-    fn from_workspace(manifest: Manifest) -> SnapshotResult<Self> {
+    fn from_workspace(manifest: &Manifest) -> SnapshotResult<Self> {
         let root_dir = get_parent(&manifest.path)?.to_path_buf();
 
-        let targets = WorkspaceMember::collect_members(&manifest)?
+        let targets = WorkspaceMember::collect_members(manifest)?
             .into_iter()
             .map(|member| CrateTarget {
                 src_dir: member.src_dir(),
