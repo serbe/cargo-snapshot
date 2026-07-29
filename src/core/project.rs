@@ -1,11 +1,10 @@
 use crate::{
-    constants::{MANIFEST_FILE, SOURCE_DIR},
+    config::{MANIFEST_FILE, SOURCE_DIR},
+    core::{crate_target::CrateInfo, manifest::Manifest, workspace::WorkspaceMember},
+    discovery::manifest_finder::locate_manifest,
     error::{SnapshotError, SnapshotResult},
-    fs::walk::{get_parent, locate_manifest},
-    model::{
-        crate_target::CrateTarget, manifest::Manifest, metadata::ProjectKind,
-        workspace::WorkspaceMember,
-    },
+    fs::path_utils::get_parent,
+    model::project_kind::ProjectKind,
 };
 
 use std::{
@@ -13,14 +12,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) struct Project {
+#[derive(Debug, Clone)]
+pub(crate) struct WorkspaceContext {
     pub root_dir: PathBuf,
     pub manifest: Manifest,
-    pub targets: Vec<CrateTarget>,
+    pub targets: Vec<CrateInfo>,
     pub workspace_name: Option<String>,
 }
 
-impl Project {
+impl WorkspaceContext {
     /// Create a new project from current directory
     pub(crate) fn from_current_dir(no_workspace: bool) -> SnapshotResult<Self> {
         let current_dir = current_dir()?;
@@ -50,7 +50,7 @@ impl Project {
 
     /// Creates a project from a standalone crate
     fn single_crate(dir: &Path, manifest: Manifest) -> SnapshotResult<Self> {
-        let name = manifest.crate_name()?;
+        let name = manifest.package_name()?;
         if name.is_empty() {
             return Err(SnapshotError::NoPackage(
                 manifest.path.display().to_string(),
@@ -58,7 +58,7 @@ impl Project {
         }
         Ok(Self {
             root_dir: dir.to_path_buf(),
-            targets: vec![CrateTarget {
+            targets: vec![CrateInfo {
                 name,
                 src_dir: dir.join(SOURCE_DIR),
             }],
@@ -73,7 +73,7 @@ impl Project {
 
         let targets = WorkspaceMember::collect_members(manifest)?
             .into_iter()
-            .map(|member| CrateTarget {
+            .map(|member| CrateInfo {
                 src_dir: member.src_dir(),
                 name: member.name,
             })
@@ -89,7 +89,7 @@ impl Project {
         })
     }
 
-    pub(crate) fn targets(&self) -> &[CrateTarget] {
+    pub(crate) fn targets(&self) -> &[CrateInfo] {
         &self.targets
     }
 

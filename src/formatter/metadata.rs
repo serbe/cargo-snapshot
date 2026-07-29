@@ -2,18 +2,16 @@ use std::io::Write;
 
 use crate::{
     SnapshotResult,
-    model::{
-        cargo_manifest::{Package, WorkspaceConfig},
-        metadata::{Metadata, ProjectKind},
-    },
+    core::package::{Package, WorkspaceConfig},
+    model::{metadata::Metadata, project_kind::ProjectKind},
 };
 
-pub(crate) struct MetadataFormatter<'a, W: Write + ?Sized> {
+pub(crate) struct MetadataSerializer<'a, W: Write + ?Sized> {
     out: &'a mut W,
     prefix: &'a str,
 }
 
-impl<'a, W: ?Sized + Write> MetadataFormatter<'a, W> {
+impl<'a, W: ?Sized + Write> MetadataSerializer<'a, W> {
     pub(crate) fn new(out: &'a mut W, prefix: &'a str) -> Self {
         Self { out, prefix }
     }

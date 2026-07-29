@@ -2,17 +2,16 @@ use std::io::Write;
 
 use crate::{
     SnapshotResult,
-    config::OutputFormat,
+    cli::format::OutputFormat,
     model::metadata::Metadata,
     renderer::{markdown::MarkdownRenderer, rust::RustRenderer},
 };
 
 pub(crate) mod markdown;
-pub(crate) mod metadata_formatter;
 pub(crate) mod rust;
 
 /// Trait for rendering snapshot output in different formats
-pub(crate) trait Renderer: Send + Sync {
+pub(crate) trait SnapshotRenderer: Send + Sync {
     /// Renders the main header (e.g., "CARGO SNAPSHOT" banner)
     fn render_header(&self, out: &mut dyn Write) -> SnapshotResult<()>;
 
@@ -47,7 +46,7 @@ pub(crate) trait Renderer: Send + Sync {
 }
 
 /// Factory function to create renderer by format
-pub(crate) fn create_renderer(format: OutputFormat) -> Box<dyn Renderer> {
+pub(crate) fn create_renderer(format: OutputFormat) -> Box<dyn SnapshotRenderer> {
     match format {
         OutputFormat::Rust => Box::new(RustRenderer),
         OutputFormat::Markdown => Box::new(MarkdownRenderer),

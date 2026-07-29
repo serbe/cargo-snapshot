@@ -1,15 +1,15 @@
 use crate::{
-    SnapshotResult, config::SnapshotConfig, fs::walk::relative_path, model::project::Project,
-    renderer::Renderer,
+    SnapshotResult, config::settings::Config, core::project::WorkspaceContext,
+    fs::path_utils::relative_path, renderer::SnapshotRenderer,
 };
 use std::{fs::read_to_string, io::Write, path::Path};
 
 /// Writes additional files like Cargo.toml and README.md
 pub(crate) fn write_extra_files(
     out: &mut impl Write,
-    project: &Project,
-    options: &SnapshotConfig,
-    _renderer: &dyn Renderer,
+    project: &WorkspaceContext,
+    options: &Config,
+    _renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
     // Per-crate manifests
     if options.include_cargo_toml {
@@ -44,7 +44,7 @@ fn write_manifest(
     out: &mut impl Write,
     path: &Path,
     label: &str,
-    project: &Project,
+    project: &WorkspaceContext,
 ) -> SnapshotResult<()> {
     if !path.exists() {
         return Ok(());
@@ -62,7 +62,7 @@ fn write_manifest(
 }
 
 /// Writes README.md if it exists
-fn write_readme(out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
+fn write_readme(out: &mut impl Write, project: &WorkspaceContext) -> SnapshotResult<()> {
     let readme = project.root_dir.join("README.md");
 
     if !readme.exists() {

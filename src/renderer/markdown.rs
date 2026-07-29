@@ -1,14 +1,13 @@
 use std::io::Write;
 
 use crate::{
-    SnapshotResult,
-    model::metadata::Metadata,
-    renderer::{Renderer, metadata_formatter::MetadataFormatter},
+    SnapshotResult, formatter::metadata::MetadataSerializer, model::metadata::Metadata,
+    renderer::SnapshotRenderer,
 };
 
 pub(crate) struct MarkdownRenderer;
 
-impl Renderer for MarkdownRenderer {
+impl SnapshotRenderer for MarkdownRenderer {
     fn metadata_prefix(&self) -> &'static str {
         "- "
     }
@@ -27,7 +26,7 @@ impl Renderer for MarkdownRenderer {
     }
 
     fn render_metadata(&self, out: &mut dyn Write, metadata: &Metadata<'_>) -> SnapshotResult<()> {
-        let mut formatter = MetadataFormatter::new(out, self.metadata_prefix());
+        let mut formatter = MetadataSerializer::new(out, self.metadata_prefix());
         formatter.format(metadata)
     }
 
@@ -54,7 +53,7 @@ impl Renderer for MarkdownRenderer {
     }
 
     fn render_structure_begin(&self, out: &mut dyn Write) -> SnapshotResult<()> {
-        writeln!(out, "## Project Structure")?;
+        writeln!(out, "## WorkspaceContext Structure")?;
         writeln!(out)?;
         writeln!(out, "```")?;
         Ok(())

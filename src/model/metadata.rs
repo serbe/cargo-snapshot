@@ -1,14 +1,4 @@
-use crate::model::cargo_manifest::{Package, WorkspaceConfig};
-
-pub(crate) enum ProjectKind<'a> {
-    Crate {
-        package: &'a Package,
-    },
-    Workspace {
-        config: &'a WorkspaceConfig,
-        name: &'a str,
-    },
-}
+use crate::model::project_kind::ProjectKind;
 
 pub(crate) struct Metadata<'a> {
     pub kind: ProjectKind<'a>,

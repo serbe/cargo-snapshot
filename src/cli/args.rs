@@ -1,75 +1,11 @@
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use glob::Pattern;
 
 use crate::{
-    constants::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION},
-    fs::walk::is_test_file,
+    cli::format::OutputFormat,
+    config::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION},
 };
-
-#[derive(Debug, Default)]
-pub(crate) struct SnapshotConfig {
-    pub format: OutputFormat,
-    pub include_hidden: bool,
-    pub no_tests: bool,
-    pub include_cargo_toml: bool,
-    pub include_workspace_toml: bool,
-    pub include_readme: bool,
-    pub exclude_patterns: Vec<Pattern>,
-}
-
-impl SnapshotConfig {
-    /// Determines whether a file path should be excluded based on options
-    pub(crate) fn is_excluded(&self, path: &Path) -> bool {
-        (self.no_tests && is_test_file(path))
-            || self.exclude_patterns.iter().any(|p| p.matches_path(path))
-    }
-}
-
-impl TryFrom<Args> for SnapshotConfig {
-    type Error = glob::PatternError;
-
-    fn try_from(args: Args) -> Result<Self, Self::Error> {
-        Ok(Self {
-            format: args.format,
-            include_hidden: args.include_hidden,
-            no_tests: args.no_tests,
-            include_cargo_toml: args.include_cargo_toml,
-            include_workspace_toml: args.include_workspace_toml,
-            include_readme: args.include_readme,
-            exclude_patterns: args
-                .exclude
-                .into_iter()
-                .map(|s| Pattern::new(&s))
-                .collect::<Result<Vec<_>, _>>()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum OutputFormat {
-    Rust,
-    #[default]
-    Markdown,
-}
-
-impl FromStr for OutputFormat {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "rust" | RUST_EXTENSION => Ok(OutputFormat::Rust),
-            "markdown" | MARKDOWN_EXTENSION => Ok(OutputFormat::Markdown),
-            _ => Err(format!(
-                "Unknown format: {s}. Use 'rust', '{RUST_EXTENSION}', 'markdown', or '{MARKDOWN_EXTENSION}'"
-            )),
-        }
-    }
-}
 
 /// Cargo subcommand for creating a Rust code snapshot for AI analysis
 #[derive(Parser, Debug)]
@@ -145,5 +81,9 @@ impl Args {
             OutputFormat::Markdown => path.with_extension(MARKDOWN_EXTENSION),
             OutputFormat::Rust => path.with_extension(RUST_EXTENSION),
         }
+    }
+
+    pub(crate) fn get() -> Self {
+        Args::parse()
     }
 }

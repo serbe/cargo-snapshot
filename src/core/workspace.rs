@@ -1,9 +1,12 @@
+use tracing::warn;
+
 use crate::{
     SnapshotResult,
-    constants::{MANIFEST_FILE, SOURCE_DIR},
-    fs::walk::get_parent,
-    model::manifest::Manifest,
+    config::{MANIFEST_FILE, SOURCE_DIR},
+    core::manifest::Manifest,
+    fs::path_utils::get_parent,
 };
+use glob::glob;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -18,18 +21,18 @@ impl WorkspaceMember {
         let cargo_manifest = path.join(MANIFEST_FILE);
 
         match Manifest::load(&cargo_manifest) {
-            Ok(manifest) => match manifest.crate_name() {
+            Ok(manifest) => match manifest.package_name() {
                 Ok(name) => Some(WorkspaceMember {
                     name,
                     root_dir: path,
                 }),
                 Err(e) => {
-                    tracing::warn!("Member missing package name in {}: {}", path.display(), e);
+                    warn!("Member missing package name in {}: {}", path.display(), e);
                     None
                 }
             },
             Err(e) => {
-                tracing::warn!("Failed to load member manifest {}: {}", path.display(), e);
+                warn!("Failed to load member manifest {}: {}", path.display(), e);
                 None
             }
         }
@@ -46,10 +49,10 @@ impl WorkspaceMember {
         }
 
         let pattern_str = pattern_path.to_string_lossy().to_string();
-        match glob::glob(&pattern_str) {
+        match glob(&pattern_str) {
             Ok(paths) => paths.filter_map(Result::ok).collect(),
             Err(e) => {
-                tracing::warn!("Invalid glob pattern '{}': {}", pattern_str, e);
+                warn!("Invalid glob pattern '{}': {}", pattern_str, e);
                 Vec::new()
             }
         }

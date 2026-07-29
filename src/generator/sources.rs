@@ -1,18 +1,18 @@
 use crate::{
     SnapshotResult,
-    config::SnapshotConfig,
-    fs::walk::{collect_source_files, relative_path},
-    model::{crate_target::CrateTarget, project::Project},
-    renderer::Renderer,
+    config::settings::Config,
+    core::{crate_target::CrateInfo, project::WorkspaceContext},
+    fs::{path_utils::relative_path, walker::collect_rust_files},
+    renderer::SnapshotRenderer,
 };
 use std::{fs::read_to_string, io::Write, path::Path};
 
 /// Writes all Rust source files from the project
 pub(crate) fn write_sources(
     out: &mut impl Write,
-    project: &Project,
-    options: &SnapshotConfig,
-    renderer: &dyn Renderer,
+    project: &WorkspaceContext,
+    options: &Config,
+    renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
     if let Some(name) = &project.workspace_name {
         renderer.render_workspace_heading(out, name)?;
@@ -28,14 +28,14 @@ pub(crate) fn write_sources(
 /// Writes sources for a single crate target
 fn write_crate_sources(
     out: &mut impl Write,
-    target: &CrateTarget,
+    target: &CrateInfo,
     root_dir: &Path,
-    options: &SnapshotConfig,
-    renderer: &dyn Renderer,
+    options: &Config,
+    renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
     renderer.render_crate_heading(out, &target.name)?;
 
-    for path in collect_source_files(&target.src_dir, options) {
+    for path in collect_rust_files(&target.src_dir, options) {
         write_file(out, root_dir, &path, renderer)?;
     }
 
@@ -47,7 +47,7 @@ pub(crate) fn write_file(
     out: &mut impl Write,
     root_dir: &Path,
     file_path: &Path,
-    renderer: &dyn Renderer,
+    renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
     let content = read_to_string(file_path)?;
     let normalized = relative_path(file_path, root_dir);

@@ -1,11 +1,11 @@
 use serde::Deserialize;
-use toml::Value;
+use toml::{Value, from_str};
 
 use crate::{
     SnapshotResult,
+    core::package::{Package, WorkspaceConfig},
     error::SnapshotError,
-    fs::walk::get_parent,
-    model::cargo_manifest::{Package, WorkspaceConfig},
+    fs::path_utils::get_parent,
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -45,7 +45,7 @@ impl Manifest {
         }
 
         let content = read_to_string(&path)?;
-        let data = toml::from_str(&content)?;
+        let data = from_str(&content)?;
         let manifest = Self {
             path: path.clone(),
             data,
@@ -72,7 +72,7 @@ impl Manifest {
             .collect()
     }
 
-    pub(crate) fn crate_name(&self) -> SnapshotResult<String> {
+    pub(crate) fn package_name(&self) -> SnapshotResult<String> {
         self.package()?
             .name
             .as_deref()
