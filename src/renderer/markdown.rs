@@ -53,7 +53,7 @@ impl SnapshotRenderer for MarkdownRenderer {
     }
 
     fn render_structure_begin(&self, out: &mut dyn Write) -> SnapshotResult<()> {
-        writeln!(out, "## WorkspaceContext Structure")?;
+        writeln!(out, "## Project Structure")?;
         writeln!(out)?;
         writeln!(out, "```")?;
         Ok(())

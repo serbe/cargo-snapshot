@@ -8,7 +8,7 @@ use std::{
 use crate::{
     SnapshotResult,
     config::settings::Config,
-    core::project::WorkspaceContext,
+    core::project::Project,
     fs::{
         filters::{is_hidden, is_rust_file},
         path_utils::read_directory,
@@ -21,12 +21,12 @@ use crate::{
 };
 
 /// Main writer for generating snapshot output
-pub(crate) struct SnapshotBuilder {
+pub(crate) struct SnapshotGenerator {
     options: Config,
     renderer: Box<dyn SnapshotRenderer>,
 }
 
-impl SnapshotBuilder {
+impl SnapshotGenerator {
     pub(crate) fn new(options: Config) -> Self {
         let renderer = create_renderer(options.format);
         Self { options, renderer }
@@ -34,7 +34,7 @@ impl SnapshotBuilder {
 
     /// Writes the complete snapshot to the output path
     pub(crate) fn write(&self) -> SnapshotResult<()> {
-        let project = WorkspaceContext::from_current_dir(self.options.no_workspace)?;
+        let project = Project::from_current_dir(self.options.no_workspace)?;
         let mut file = File::create(&self.options.output_path)?;
 
         self.renderer.render_header(&mut file)?;
@@ -48,11 +48,7 @@ impl SnapshotBuilder {
     }
 
     /// Writes metadata section with package/workspace information
-    fn write_metadata(
-        &self,
-        out: &mut impl Write,
-        project: &WorkspaceContext,
-    ) -> SnapshotResult<()> {
+    fn write_metadata(&self, out: &mut impl Write, project: &Project) -> SnapshotResult<()> {
         let metadata = Metadata {
             kind: project.metadata_kind()?,
             dependencies: project.dependencies(),

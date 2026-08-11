@@ -1,5 +1,5 @@
 use crate::config::settings::Config;
-use crate::core::project::WorkspaceContext;
+use crate::core::project::Project;
 use crate::fs::path_utils::relative_path;
 use crate::fs::walker::print_dir_tree;
 use crate::{SnapshotResult, config::SOURCE_DIR, renderer::SnapshotRenderer};
@@ -8,7 +8,7 @@ use std::{ffi::OsStr, io::Write};
 /// Writes the project structure tree
 pub(crate) fn write_project_structure(
     out: &mut impl Write,
-    project: &WorkspaceContext,
+    project: &Project,
     options: &Config,
     renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
@@ -27,7 +27,7 @@ pub(crate) fn write_project_structure(
 /// Writes tree for a workspace
 fn write_workspace_tree(
     out: &mut impl Write,
-    project: &WorkspaceContext,
+    project: &Project,
     options: &Config,
     renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
@@ -53,7 +53,7 @@ fn write_workspace_tree(
 /// Writes tree for a single crate
 fn write_crate_tree(
     out: &mut impl Write,
-    project: &WorkspaceContext,
+    project: &Project,
     options: &Config,
     renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {

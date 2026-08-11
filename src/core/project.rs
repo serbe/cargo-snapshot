@@ -13,14 +13,14 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-pub(crate) struct WorkspaceContext {
+pub(crate) struct Project {
     pub root_dir: PathBuf,
     pub manifest: Manifest,
     pub targets: Vec<CrateInfo>,
     pub workspace_name: Option<String>,
 }
 
-impl WorkspaceContext {
+impl Project {
     /// Create a new project from current directory
     pub(crate) fn from_current_dir(no_workspace: bool) -> SnapshotResult<Self> {
         let current_dir = current_dir()?;

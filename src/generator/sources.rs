@@ -1,7 +1,7 @@
 use crate::{
     SnapshotResult,
     config::settings::Config,
-    core::{crate_target::CrateInfo, project::WorkspaceContext},
+    core::{crate_target::CrateInfo, project::Project},
     fs::{path_utils::relative_path, walker::collect_rust_files},
     renderer::SnapshotRenderer,
 };
@@ -10,7 +10,7 @@ use std::{fs::read_to_string, io::Write, path::Path};
 /// Writes all Rust source files from the project
 pub(crate) fn write_sources(
     out: &mut impl Write,
-    project: &WorkspaceContext,
+    project: &Project,
     options: &Config,
     renderer: &dyn SnapshotRenderer,
 ) -> SnapshotResult<()> {
