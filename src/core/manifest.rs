@@ -8,14 +8,10 @@ use crate::{
     fs::path_utils::get_parent,
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     fs::read_to_string,
     path::PathBuf,
-    sync::{LazyLock, Mutex},
 };
-
-static MANIFEST_CACHE: LazyLock<Mutex<HashMap<PathBuf, Manifest>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct ManifestData {
@@ -40,18 +36,12 @@ impl Manifest {
     pub(crate) fn load(path: impl Into<PathBuf>) -> SnapshotResult<Self> {
         let path = path.into();
 
-        if let Some(manifest) = MANIFEST_CACHE.lock()?.get(&path).cloned() {
-            return Ok(manifest);
-        }
-
         let content = read_to_string(&path)?;
         let data = from_str(&content)?;
         let manifest = Self {
             path: path.clone(),
             data,
         };
-
-        MANIFEST_CACHE.lock()?.insert(path, manifest.clone());
 
         Ok(manifest)
     }
