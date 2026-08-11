@@ -7,6 +7,28 @@ use crate::{
     config::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION},
 };
 
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
+pub(crate) enum LogLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            LogLevel::Error => "error",
+            LogLevel::Warn => "warn",
+            LogLevel::Info => "info",
+            LogLevel::Debug => "debug",
+            LogLevel::Trace => "trace",
+        }
+    }
+}
+
 /// Cargo subcommand for creating a Rust code snapshot for AI analysis
 #[derive(Parser, Debug)]
 #[command(name = "cargo-snapshot")]
@@ -22,7 +44,7 @@ pub(crate) struct Args {
 
     /// Log level (error, warn, info, debug, trace)
     #[arg(short, long, default_value = "info")]
-    pub log_level: String,
+    pub log_level: LogLevel,
 
     /// Exclude tests from snapshot
     #[arg(long)]
