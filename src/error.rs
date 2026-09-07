@@ -30,6 +30,9 @@ pub(crate) enum SnapshotError {
 
     #[error("Failed to acquire lock for manifest cache: {0}")]
     CacheLock(String),
+
+    #[error("Failed get metadata: {0}")]
+    CargoMetadata(#[from] cargo_metadata::Error),
 }
 
 impl<T> From<PoisonError<T>> for SnapshotError {

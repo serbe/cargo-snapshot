@@ -2,7 +2,9 @@ pub(crate) use crate::error::SnapshotResult;
 use crate::{
     cli::args::Args,
     config::{settings::Config, tracing::init_tracing},
+    error::SnapshotError,
     generator::snapshot_generator::SnapshotGenerator,
+    snapshot::Snapshot,
 };
 
 mod cli;
@@ -15,8 +17,9 @@ mod fs;
 mod generator;
 mod model;
 mod renderer;
+mod snapshot;
 
-fn main() -> SnapshotResult<()> {
+fn main() -> Result<(), SnapshotError> {
     let args = Args::get();
 
     init_tracing(&args);
@@ -24,8 +27,12 @@ fn main() -> SnapshotResult<()> {
     let config = Config::new(args)?;
     let output = config.output_path.clone().display().to_string();
 
-    SnapshotGenerator::new(config).write()?;
+    // SnapshotGenerator::new(config).write()?;
 
-    println!("✅ Snapshot saved to {output}");
+    let snapshot = Snapshot::new()?;
+
+    dbg!(&snapshot.metadata);
+
+    // println!("✅ Snapshot saved to {output}");
     Ok(())
 }
