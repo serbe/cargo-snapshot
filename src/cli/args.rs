@@ -2,10 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 
-use crate::{
-    cli::format::OutputFormat,
-    config::{DEFAULT_SNAPSHOT_NAME, MARKDOWN_EXTENSION, RUST_EXTENSION},
-};
+pub(crate) const DEFAULT_SNAPSHOT_NAME: &str = "snapshot.md";
 
 #[derive(clap::ValueEnum, Clone, Debug, Default)]
 pub(crate) enum LogLevel {
@@ -29,79 +26,37 @@ impl LogLevel {
     }
 }
 
-/// Cargo subcommand for creating a Rust code snapshot for AI analysis
+/// Cargo subcommand that writes a project snapshot for AI analysis.
 #[derive(Parser, Debug)]
 #[command(name = "cargo-snapshot")]
-#[command(about = "Save current crate or workspace into a single file for AI analysis")]
+#[command(about = "Create a Markdown snapshot of the current Cargo project for AI analysis")]
 pub(crate) struct Args {
-    /// Output file (default: snapshot.rs or snapshot.md depending on format)
+    /// Output file (default: snapshot.md).
     #[arg(short, long)]
     pub output: Option<String>,
 
-    /// Output format (rust, rs, markdown, or md)
-    #[arg(short, long, default_value = "markdown")]
-    pub format: OutputFormat,
-
-    /// Log level (error, warn, info, debug, trace)
+    /// Log level (`error`, `warn`, `info`, `debug`, or `trace`).
     #[arg(short, long, default_value = "info")]
     pub log_level: LogLevel,
 
-    /// Exclude tests from snapshot
+    /// Include the project README in the snapshot when available.
     #[arg(long)]
-    pub no_tests: bool,
+    pub readme: bool,
 
-    /// Exclude files matching glob pattern (can be used multiple times)
-    #[arg(long, short = 'x')]
-    pub exclude: Vec<String>,
-
-    /// Include hidden files/directories
+    /// Remove comments from Rust source files in the snapshot.
     #[arg(long)]
-    pub include_hidden: bool,
-
-    /// Snapshot only the current crate, even if it belongs to a workspace
-    #[arg(long)]
-    pub no_workspace: bool,
-
-    /// Include crate Cargo.toml in snapshot
-    #[arg(long)]
-    pub include_cargo_toml: bool,
-
-    /// Include workspace Cargo.toml in snapshot
-    #[arg(long)]
-    pub include_workspace_toml: bool,
-
-    /// Include README.md files in snapshot
-    #[arg(long)]
-    pub include_readme: bool,
+    pub no_comments: bool,
 }
 
 impl Args {
-    /// Returns the output path with appropriate extension.
+    /// Returns the output path, adding an extension when the path has none.
     ///
-    /// If the user specified a path, it is respected. Otherwise, the default
-    /// filename (snapshot) with the appropriate extension (.rs for Rust format,
-    /// .md for Markdown) is used.
-    ///
-    /// # Examples
-    /// - `--output snapshot --format rust` → `snapshot.rs`
-    /// - `--output report.txt --format rust` → `report.txt` (keeps .txt)
-    /// - `--output /tmp/out --format markdown` → `/tmp/out.md`
-    /// - `--format markdown` (no --output) → `snapshot.md`
+    /// An explicitly supplied extension is preserved. Otherwise, the extension
+    /// is selected by `--format`; the generated snapshot content is Markdown.
     pub(crate) fn output_path(&self) -> PathBuf {
-        let path = match &self.output {
+        match &self.output {
             Some(output) => Path::new(output).to_path_buf(),
             None => Path::new(DEFAULT_SNAPSHOT_NAME).to_path_buf(),
-        };
-
-        // If user explicitly specified an extension, respect it
-        if path.extension().is_some() {
-            return path;
-        }
-
-        // Otherwise add appropriate extension based on format
-        match self.format {
-            OutputFormat::Markdown => path.with_extension(MARKDOWN_EXTENSION),
-            OutputFormat::Rust => path.with_extension(RUST_EXTENSION),
         }
     }
 

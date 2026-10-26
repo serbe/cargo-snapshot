@@ -123,5 +123,5 @@ rustflags = [
     # Линты в активной разработке; могут давать false positive.
     # Рекомендуется включать только локально для исследования, не в CI.
     # "-Wclippy::nursery",
-    # "-Aclippy::redundant_pub_crate",   # если nursery включён — шумит на pub(crate)
+    # "-Aclippy::redundant_pub_crate",   # если nursery включён — шумит на pub
 ]

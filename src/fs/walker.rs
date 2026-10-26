@@ -1,69 +1,105 @@
-use crate::{
-    SnapshotResult,
-    config::settings::Config,
-    fs::filters::{is_hidden, is_rust_file},
-    generator::snapshot_generator::read_sorted_entries,
-    renderer::SnapshotRenderer,
-};
 use std::{
-    io::Write,
+    collections::HashSet,
+    fs::read_to_string,
     path::{Path, PathBuf},
 };
-use walkdir::{DirEntry, WalkDir};
 
-/// Recursively collect all `.rs` files from a directory
-pub(crate) fn collect_rust_files(dir: impl AsRef<Path>, options: &Config) -> Vec<PathBuf> {
-    let mut source_files = WalkDir::new(dir)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|entry| options.include_hidden || !is_hidden(entry.path()))
-        .filter_map(Result::ok)
-        .map(DirEntry::into_path)
-        .filter(|path| is_rust_file(path))
-        .filter(|path| !options.should_exclude(path))
-        .collect::<Vec<_>>();
+pub(crate) fn collect_used_rs_files(entry_point: &Path) -> HashSet<PathBuf> {
+    let mut visited = HashSet::new();
+    let mut stack = vec![entry_point.to_path_buf()];
 
-    source_files.sort();
+    while let Some(file_path) = stack.pop() {
+        let file_path = match file_path.canonicalize() {
+            Ok(canonical_path) => canonical_path,
+            Err(_) => file_path,
+        };
+        if visited.contains(&file_path) {
+            continue;
+        }
 
-    source_files
-}
+        let content = match read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(_) => continue, // Skip missing or unreadable module files.
+        };
 
-/// Prints directory tree recursively
-pub(crate) fn print_dir_tree(
-    out: &mut impl Write,
-    dir: &Path,
-    prefix: &mut String,
-    options: &Config,
-    renderer: &dyn SnapshotRenderer,
-) -> SnapshotResult<()> {
-    let pfx = renderer.tree_prefix();
-    let entries = read_sorted_entries(dir, options.include_hidden)?;
-
-    for (i, entry) in entries.iter().enumerate() {
-        let is_last = i == entries.len() - 1;
-        let connector = if is_last { "└── " } else { "├── " };
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let path = entry.path();
-
-        if path.is_dir() {
-            writeln!(out, "{pfx}{prefix}{connector}{name}/")?;
-
-            // Extend prefix for children
-            let old_len = prefix.len();
-            if is_last {
-                prefix.push_str("    ");
-            } else {
-                prefix.push_str("│   ");
+        let syntax = match syn::parse_file(&content) {
+            Ok(s) => s,
+            Err(_) => {
+                visited.insert(file_path);
+                continue;
             }
+        };
 
-            print_dir_tree(out, &path, prefix, options, renderer)?;
+        visited.insert(file_path.clone());
 
-            // Restore prefix
-            prefix.truncate(old_len);
-        } else {
-            writeln!(out, "{pfx}{prefix}{connector}{name}")?;
+        // Resolve child modules relative to this module's directory.
+        let Some(base_dir) = module_dir_for(&file_path) else {
+            continue;
+        };
+
+        for item in &syntax.items {
+            collect_mods_from_item(item, &base_dir, &mut stack);
         }
     }
 
-    Ok(())
+    visited
+}
+
+fn module_dir_for(file_path: &Path) -> Option<PathBuf> {
+    let (parent, file_stem) = file_path.parent().zip(file_path.file_stem())?;
+    let file_stem = file_stem.to_string_lossy();
+
+    Some(
+        if file_stem == "mod" || file_stem == "main" || file_stem == "lib" {
+            parent.to_path_buf()
+        } else {
+            parent.join(file_stem.as_ref())
+        },
+    )
+}
+
+fn collect_mods_from_item(item: &syn::Item, base_dir: &Path, stack: &mut Vec<PathBuf>) {
+    if let syn::Item::Mod(item_mod) = item {
+        // Inline modules have no source file, but their child modules still
+        // need to be resolved relative to `base_dir/module_name/`.
+        if let Some((_, items)) = &item_mod.content {
+            let inline_dir = base_dir.join(item_mod.ident.to_string());
+            for inner in items {
+                collect_mods_from_item(inner, &inline_dir, stack);
+            }
+            return;
+        }
+
+        // A `#[path = "..."]` attribute overrides the module file path.
+        let explicit_path = item_mod.attrs.iter().find_map(|attr| {
+            if attr.path().is_ident("path") {
+                if let syn::Meta::NameValue(nv) = &attr.meta {
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(s),
+                        ..
+                    }) = &nv.value
+                    {
+                        return Some(s.value());
+                    }
+                }
+            }
+            None
+        });
+
+        let mod_name = item_mod.ident.to_string();
+
+        let candidate = if let Some(p) = explicit_path {
+            base_dir.join(p)
+        } else {
+            // Prefer `foo.rs`, then fall back to `foo/mod.rs`.
+            let as_file = base_dir.join(format!("{mod_name}.rs"));
+            if as_file.exists() {
+                as_file
+            } else {
+                base_dir.join(&mod_name).join("mod.rs")
+            }
+        };
+
+        stack.push(candidate);
+    }
 }
