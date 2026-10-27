@@ -49,10 +49,7 @@ pub(crate) struct Args {
 }
 
 impl Args {
-    /// Returns the output path, adding an extension when the path has none.
-    ///
-    /// An explicitly supplied extension is preserved. Otherwise, the extension
-    /// is selected by `--format`; the generated snapshot content is Markdown.
+    /// Returns the output path exactly as supplied, or the default snapshot path.
     pub(crate) fn output_path(&self) -> PathBuf {
         match &self.output {
             Some(output) => Path::new(output).to_path_buf(),
