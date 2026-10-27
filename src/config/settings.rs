@@ -10,7 +10,7 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    pub(crate) fn new(args: Args) -> Self {
+    pub(crate) fn new(args: &Args) -> Self {
         Self {
             output_path: args.output_path(),
             readme: args.readme,
