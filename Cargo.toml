@@ -5,6 +5,7 @@ edition = "2024"
 description = "A Cargo subcommand that fuses a Rust workspace into a single file"
 repository = "https://github.com/serbe/snapshot"
 readme = "README.md"
+exclude = ["SKILL.md"]
 license = "MIT"
 keywords = ["cargo", "subcommand", "bundle", "single-file", "binary", "snapshot"]
 authors = ["Serbe"]
