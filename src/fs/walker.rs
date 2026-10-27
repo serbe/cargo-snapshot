@@ -17,17 +17,13 @@ pub(crate) fn collect_used_rs_files(entry_point: &Path) -> HashSet<PathBuf> {
             continue;
         }
 
-        let content = match read_to_string(&file_path) {
-            Ok(c) => c,
-            Err(_) => continue, // Skip missing or unreadable module files.
+        let Ok(content) = read_to_string(&file_path) else {
+            continue;
         };
 
-        let syntax = match syn::parse_file(&content) {
-            Ok(s) => s,
-            Err(_) => {
-                visited.insert(file_path);
-                continue;
-            }
+        let Ok(syntax) = syn::parse_file(&content) else {
+            visited.insert(file_path);
+            continue;
         };
 
         visited.insert(file_path.clone());
@@ -72,16 +68,14 @@ fn collect_mods_from_item(item: &syn::Item, base_dir: &Path, stack: &mut Vec<Pat
 
         // A `#[path = "..."]` attribute overrides the module file path.
         let explicit_path = item_mod.attrs.iter().find_map(|attr| {
-            if attr.path().is_ident("path") {
-                if let syn::Meta::NameValue(nv) = &attr.meta {
-                    if let syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Str(s),
-                        ..
-                    }) = &nv.value
-                    {
-                        return Some(s.value());
-                    }
-                }
+            if attr.path().is_ident("path")
+                && let syn::Meta::NameValue(nv) = &attr.meta
+                && let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(s),
+                    ..
+                }) = &nv.value
+            {
+                return Some(s.value());
             }
             None
         });
