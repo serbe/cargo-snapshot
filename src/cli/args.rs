@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::{OsStr, OsString},
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 
@@ -58,6 +61,54 @@ impl Args {
     }
 
     pub(crate) fn get() -> Self {
-        Args::parse()
+        Self::parse_cargo_args(std::env::args_os())
+    }
+
+    fn parse_cargo_args<I>(args: I) -> Self
+    where
+        I: IntoIterator<Item = OsString>,
+    {
+        let mut args = args.into_iter();
+        let executable = args.next();
+        let first_argument = args.next();
+        let first_argument = first_argument.filter(|argument| argument != OsStr::new("snapshot"));
+
+        Self::parse_from(executable.into_iter().chain(first_argument).chain(args))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+
+    use super::{Args, LogLevel};
+
+    #[test]
+    fn parses_arguments_forwarded_by_cargo_subcommand() {
+        let args = Args::parse_cargo_args(
+            [
+                "cargo-snapshot",
+                "snapshot",
+                "--output",
+                "project.md",
+                "--no-comments",
+            ]
+            .map(OsString::from),
+        );
+
+        assert_eq!(args.output.as_deref(), Some("project.md"));
+        assert!(args.no_comments);
+        assert!(!args.readme);
+        assert!(matches!(args.log_level, LogLevel::Info));
+    }
+
+    #[test]
+    fn parses_arguments_when_binary_is_invoked_directly() {
+        let args = Args::parse_cargo_args(
+            ["cargo-snapshot", "--output", "project.md"].map(OsString::from),
+        );
+
+        assert_eq!(args.output.as_deref(), Some("project.md"));
+        assert!(!args.no_comments);
     }
 }
