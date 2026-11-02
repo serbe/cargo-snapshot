@@ -154,6 +154,9 @@ impl Snapshot {
 
     pub(crate) fn write_sources_md<P: AsRef<Path>>(&self, output: P) -> Result<(), SnapshotError> {
         let output = output.as_ref();
+        let sources = self.sorted_sources();
+        ensure_output_is_not_source(output, &sources)?;
+
         let file = File::create(output)?;
         let output_path = output.canonicalize().ok();
         let mut writer = BufWriter::new(file);
@@ -179,7 +182,7 @@ impl Snapshot {
         writeln!(writer, "## Used Rust files")?;
         writeln!(writer)?;
 
-        for source in self.sorted_sources() {
+        for source in sources {
             let source_content = fs::read_to_string(&source)?;
             let content = if self.config.no_comments {
                 strip_rust_comments(&source_content)
@@ -210,6 +213,40 @@ impl Snapshot {
 
         Ok(())
     }
+}
+
+fn ensure_output_is_not_source(
+    output: &Path,
+    source_files: &[PathBuf],
+) -> Result<(), SnapshotError> {
+    let output = canonical_output_path(output)?;
+
+    for source in source_files {
+        if source.canonicalize()? == output {
+            return Err(SnapshotError::OutputIsSource(source.clone()));
+        }
+    }
+
+    Ok(())
+}
+
+fn canonical_output_path(output: &Path) -> Result<PathBuf, std::io::Error> {
+    if let Ok(path) = output.canonicalize() {
+        return Ok(path);
+    }
+
+    let file_name = output.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "output path must name a file",
+        )
+    })?;
+    let parent = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+
+    Ok(parent.canonicalize()?.join(file_name))
 }
 
 fn write_tree<W: Write>(
@@ -418,7 +455,45 @@ fn markdown_fence(content: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_rust_comments;
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
+    use super::{ensure_output_is_not_source, strip_rust_comments};
+
+    static NEXT_TEST_FILE: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn rejects_output_that_is_a_source_file_without_modifying_it() {
+        let file = std::env::temp_dir().join(format!(
+            "cargo-snapshot-source-{}-{}.rs",
+            std::process::id(),
+            NEXT_TEST_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::write(&file, "fn original() {}\n").expect("create test source");
+
+        let result = ensure_output_is_not_source(&file, std::slice::from_ref(&file));
+
+        assert!(matches!(
+            result,
+            Err(crate::error::SnapshotError::OutputIsSource(path)) if path == file
+        ));
+        assert_eq!(
+            fs::read_to_string(&file).expect("read test source"),
+            "fn original() {}\n"
+        );
+        fs::remove_file(file).expect("remove test source");
+    }
+
+    #[test]
+    fn allows_output_that_is_not_a_source_file() {
+        let source = PathBuf::from("src/main.rs");
+        let output = PathBuf::from("snapshot.md");
+
+        assert!(ensure_output_is_not_source(&output, &[source]).is_ok());
+    }
 
     #[test]
     fn removes_comments_but_preserves_string_literals() {
