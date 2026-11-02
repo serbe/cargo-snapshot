@@ -4,6 +4,24 @@
 including its dependencies, project tree, and Rust source files reachable from
 the root package's binary and library targets.
 
+## Install
+
+Install the published package with Cargo:
+
+```sh
+cargo install cargo-snapshot
+```
+
+To install from a local checkout instead:
+
+```sh
+cargo install --path .
+```
+
+Cargo installs the `cargo-snapshot` executable in its binary directory
+(usually `~/.cargo/bin` on Unix-like systems or `%USERPROFILE%\\.cargo\\bin`
+on Windows). Make sure that directory is on `PATH`.
+
 ## Usage
 
 Run from a Cargo project directory:
@@ -12,10 +30,22 @@ Run from a Cargo project directory:
 cargo snapshot
 ```
 
-Or invoke the binary directly:
+Pass options after the subcommand name:
+
+```sh
+cargo snapshot --output snapshot.md --readme
+```
+
+The installed executable can also be invoked directly:
 
 ```sh
 cargo-snapshot --output snapshot.md
+```
+
+Check that Cargo can find the subcommand with:
+
+```sh
+cargo snapshot --help
 ```
 
 Options:
