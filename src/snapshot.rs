@@ -3,20 +3,22 @@ use std::{
     fs::{self, File},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
+    process::Command,
 };
 
-use cargo_metadata::{DependencyKind, Metadata, MetadataCommand};
+use cargo_metadata::{CargoOpt, DependencyKind, Metadata, MetadataCommand};
 
 use crate::{
     cli::args::Args,
     config::{settings::Config, tracing::init_tracing},
     error::SnapshotError,
-    fs::walker::collect_used_rs_files,
+    fs::walker::{CfgSet, collect_used_rs_files},
 };
 
 pub(crate) struct Snapshot {
     pub config: Config,
     pub metadata: Metadata,
+    cfg: CfgSet,
 }
 
 impl Snapshot {
@@ -24,8 +26,31 @@ impl Snapshot {
         let args = Args::get();
         init_tracing(&args);
         let config = Config::new(&args);
-        let metadata = MetadataCommand::new().no_deps().exec()?;
-        Ok(Self { config, metadata })
+        let target = args
+            .target
+            .clone()
+            .or_else(|| std::env::var("CARGO_BUILD_TARGET").ok());
+        let mut metadata_command = MetadataCommand::new();
+        if args.all_features {
+            metadata_command.features(CargoOpt::AllFeatures);
+        }
+        if args.no_default_features {
+            metadata_command.features(CargoOpt::NoDefaultFeatures);
+        }
+        if !args.features.is_empty() {
+            metadata_command.features(CargoOpt::SomeFeatures(args.features.clone()));
+        }
+        if let Some(target) = &target {
+            metadata_command.other_options(vec!["--filter-platform".into(), target.clone()]);
+        }
+        let metadata = metadata_command.exec()?;
+        let features = active_root_features(&metadata);
+        let cfg = rustc_cfg(target.as_deref(), features)?;
+        Ok(Self {
+            config,
+            metadata,
+            cfg,
+        })
     }
 
     fn find_entry_points(&self) -> Vec<PathBuf> {
@@ -50,7 +75,7 @@ impl Snapshot {
         let mut all_used = HashSet::new();
 
         for entry in self.find_entry_points() {
-            all_used.extend(collect_used_rs_files(&entry));
+            all_used.extend(collect_used_rs_files(&entry, &self.cfg));
         }
 
         all_used.into_iter().collect()
@@ -211,6 +236,7 @@ impl Snapshot {
             writeln!(writer)?;
         }
 
+        writer.flush()?;
         Ok(())
     }
 }
@@ -247,6 +273,42 @@ fn canonical_output_path(output: &Path) -> Result<PathBuf, std::io::Error> {
         .unwrap_or_else(|| Path::new("."));
 
     Ok(parent.canonicalize()?.join(file_name))
+}
+
+fn active_root_features(metadata: &Metadata) -> Vec<String> {
+    let Some(package) = metadata.root_package() else {
+        return Vec::new();
+    };
+    let Some(resolve) = &metadata.resolve else {
+        return Vec::new();
+    };
+
+    resolve
+        .nodes
+        .iter()
+        .find(|node| node.id == package.id)
+        .map(|node| node.features.iter().map(ToString::to_string).collect())
+        .unwrap_or_default()
+}
+
+fn rustc_cfg(target: Option<&str>, features: Vec<String>) -> Result<CfgSet, SnapshotError> {
+    let mut command = Command::new("rustc");
+    command.arg("--print").arg("cfg");
+    if let Some(target) = target {
+        command.arg("--target").arg(target);
+    }
+
+    let output = command.output()?;
+    if !output.status.success() {
+        return Err(SnapshotError::RustcCfg(
+            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        ));
+    }
+
+    Ok(CfgSet::from_rustc_output(
+        &String::from_utf8_lossy(&output.stdout),
+        features,
+    ))
 }
 
 fn write_tree<W: Write>(
