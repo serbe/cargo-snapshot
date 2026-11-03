@@ -1,6 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use clap::Parser;
@@ -36,7 +36,7 @@ impl LogLevel {
 pub(crate) struct Args {
     /// Output file (default: snapshot.md).
     #[arg(short, long)]
-    pub output: Option<String>,
+    pub output: Option<PathBuf>,
 
     /// Log level (`error`, `warn`, `info`, `debug`, or `trace`).
     #[arg(short, long, default_value = "info")]
@@ -49,15 +49,35 @@ pub(crate) struct Args {
     /// Remove comments from Rust source files in the snapshot.
     #[arg(long)]
     pub no_comments: bool,
+
+    /// Enable Cargo features when resolving conditional modules.
+    #[arg(
+        short = 'F',
+        long,
+        value_delimiter = ',',
+        conflicts_with = "all_features"
+    )]
+    pub features: Vec<String>,
+
+    /// Enable all Cargo features when resolving conditional modules.
+    #[arg(long, conflicts_with = "features")]
+    pub all_features: bool,
+
+    /// Do not enable default Cargo features.
+    #[arg(long, conflicts_with = "all_features")]
+    pub no_default_features: bool,
+
+    /// Target triple used to evaluate target-specific cfg attributes.
+    #[arg(long)]
+    pub target: Option<String>,
 }
 
 impl Args {
     /// Returns the output path exactly as supplied, or the default snapshot path.
     pub(crate) fn output_path(&self) -> PathBuf {
-        match &self.output {
-            Some(output) => Path::new(output).to_path_buf(),
-            None => Path::new(DEFAULT_SNAPSHOT_NAME).to_path_buf(),
-        }
+        self.output
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_SNAPSHOT_NAME))
     }
 
     pub(crate) fn get() -> Self {
@@ -79,7 +99,7 @@ impl Args {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsString;
+    use std::{ffi::OsString, path::Path};
 
     use super::{Args, LogLevel};
 
@@ -96,7 +116,7 @@ mod tests {
             .map(OsString::from),
         );
 
-        assert_eq!(args.output.as_deref(), Some("project.md"));
+        assert_eq!(args.output.as_deref(), Some(Path::new("project.md")));
         assert!(args.no_comments);
         assert!(!args.readme);
         assert!(matches!(args.log_level, LogLevel::Info));
@@ -108,7 +128,7 @@ mod tests {
             ["cargo-snapshot", "--output", "project.md"].map(OsString::from),
         );
 
-        assert_eq!(args.output.as_deref(), Some("project.md"));
+        assert_eq!(args.output.as_deref(), Some(Path::new("project.md")));
         assert!(!args.no_comments);
     }
 }
