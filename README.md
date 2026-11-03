@@ -55,3 +55,7 @@ Options:
   `debug`, or `trace`).
 - `--readme`: include the package README when available.
 - `--no-comments`: remove comments from Rust source files in the snapshot.
+- `--features <FEATURES>`: enable Cargo features when resolving `#[cfg]` modules.
+- `--all-features`: resolve modules with every package feature enabled.
+- `--no-default-features`: resolve modules without default features.
+- `--target <TRIPLE>`: evaluate target-specific `#[cfg]` attributes for a target triple.
