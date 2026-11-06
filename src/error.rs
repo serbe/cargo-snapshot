@@ -15,6 +15,9 @@ pub(crate) enum SnapshotError {
     #[error("failed to query rustc cfg: {0}")]
     RustcCfg(String),
 
+    #[error("cargo check failed while collecting build-script cfg values: {0}")]
+    CargoCheck(String),
+
     #[error("Failed to get root package")]
     NoRootPackage,
 }
