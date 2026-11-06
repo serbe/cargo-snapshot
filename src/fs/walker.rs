@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fs::read_to_string,
+    fs::{read_dir, read_to_string},
     path::{Path, PathBuf},
 };
 
@@ -15,6 +15,7 @@ impl CfgSet {
     pub(crate) fn from_rustc_output(
         output: &str,
         features: impl IntoIterator<Item = String>,
+        build_script_cfgs: impl IntoIterator<Item = String>,
     ) -> Self {
         let mut values = output.lines().map(str::to_owned).collect::<HashSet<_>>();
         values.extend(
@@ -22,6 +23,7 @@ impl CfgSet {
                 .into_iter()
                 .map(|feature| format!("feature={feature:?}")),
         );
+        values.extend(build_script_cfgs);
         Self { values }
     }
 
@@ -55,6 +57,30 @@ impl CfgSet {
             }
         }
     }
+}
+
+pub(crate) fn collect_project_rs_files(root: &Path) -> Result<HashSet<PathBuf>, std::io::Error> {
+    let mut files = HashSet::new();
+    let mut directories = vec![root.to_path_buf()];
+
+    while let Some(directory) = directories.pop() {
+        for entry in read_dir(directory)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            let path = entry.path();
+
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                if name != ".git" && name != "target" {
+                    directories.push(path);
+                }
+            } else if file_type.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+                files.insert(path.canonicalize()?);
+            }
+        }
+    }
+
+    Ok(files)
 }
 
 fn path_name(path: &syn::Path) -> String {
@@ -242,7 +268,7 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
 
-    use super::{CfgSet, Meta, collect_used_rs_files};
+    use super::{CfgSet, Meta, collect_project_rs_files, collect_used_rs_files};
 
     static NEXT_TEST_FILE: AtomicUsize = AtomicUsize::new(0);
 
@@ -265,6 +291,48 @@ mod tests {
     }
 
     #[test]
+    fn collects_rust_files_outside_active_module_graph() {
+        let directory = test_directory();
+        let test_source = directory.join("tests").join("integration.rs");
+        let ignored_target_source = directory.join("target").join("generated.rs");
+        let ignored_git_source = directory.join(".git").join("hook.rs");
+        fs::create_dir_all(test_source.parent().expect("test source parent"))
+            .expect("create tests directory");
+        fs::create_dir_all(ignored_target_source.parent().expect("target parent"))
+            .expect("create target directory");
+        fs::create_dir_all(ignored_git_source.parent().expect("git parent"))
+            .expect("create git directory");
+        fs::write(&test_source, "fn integration_test() {}\n").expect("write integration source");
+        fs::write(&ignored_target_source, "fn generated() {}\n").expect("write generated source");
+        fs::write(&ignored_git_source, "fn hook() {}\n").expect("write git source");
+
+        let files = collect_project_rs_files(&directory).expect("scan project Rust files");
+
+        assert!(
+            files.contains(
+                &test_source
+                    .canonicalize()
+                    .expect("canonicalize test source")
+            )
+        );
+        assert!(
+            !files.contains(
+                &ignored_target_source
+                    .canonicalize()
+                    .expect("canonicalize target source")
+            )
+        );
+        assert!(
+            !files.contains(
+                &ignored_git_source
+                    .canonicalize()
+                    .expect("canonicalize git source")
+            )
+        );
+        fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
     fn skips_modules_with_inactive_feature_cfg() {
         let directory = test_directory();
         let entry = directory.join("main.rs");
@@ -277,7 +345,7 @@ mod tests {
         fs::write(&conditional_module, "pub fn unavailable() {}\n")
             .expect("write conditional module");
 
-        let cfg = CfgSet::from_rustc_output("", Vec::new());
+        let cfg = CfgSet::from_rustc_output("", Vec::new(), Vec::new());
         let files = collect_used_rs_files(&entry, &cfg);
 
         assert!(
@@ -302,7 +370,7 @@ mod tests {
         .expect("write test entry point");
         fs::write(&conditional_module, "pub fn available() {}\n")
             .expect("write conditional module");
-        let cfg = CfgSet::from_rustc_output("", ["enabled_feature".to_owned()]);
+        let cfg = CfgSet::from_rustc_output("", ["enabled_feature".to_owned()], Vec::new());
 
         let files = collect_used_rs_files(&entry, &cfg);
 
@@ -318,7 +386,7 @@ mod tests {
 
     #[test]
     fn evaluates_composite_cfg_conditions() {
-        let cfg = CfgSet::from_rustc_output("unix\ntarget_arch=\"x86_64\"", []);
+        let cfg = CfgSet::from_rustc_output("unix\ntarget_arch=\"x86_64\"", [], []);
         let condition: Meta = syn::parse_quote!(all(unix, not(target_os = "windows")));
 
         assert!(cfg.is_enabled(&condition));
@@ -337,7 +405,7 @@ mod tests {
         .expect("write test entry point");
         fs::write(&unix_module, "pub fn unix() {}\n").expect("write unix module");
         fs::write(&other_module, "pub fn fallback() {}\n").expect("write fallback module");
-        let cfg = CfgSet::from_rustc_output("unix", []);
+        let cfg = CfgSet::from_rustc_output("unix", [], []);
 
         let files = collect_used_rs_files(&entry, &cfg);
 
@@ -353,6 +421,27 @@ mod tests {
                 &other_module
                     .canonicalize()
                     .expect("canonicalize fallback module")
+            )
+        );
+        fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn includes_modules_with_active_custom_cfg() {
+        let directory = test_directory();
+        let entry = directory.join("main.rs");
+        let custom_module = directory.join("custom.rs");
+        fs::write(&entry, "#[cfg(product_mode)] mod custom;\n").expect("write test entry point");
+        fs::write(&custom_module, "pub fn custom_mode() {}\n").expect("write custom cfg module");
+        let cfg = CfgSet::from_rustc_output("", [], ["product_mode".to_owned()]);
+
+        let files = collect_used_rs_files(&entry, &cfg);
+
+        assert!(
+            files.contains(
+                &custom_module
+                    .canonicalize()
+                    .expect("canonicalize custom cfg module")
             )
         );
         fs::remove_dir_all(directory).expect("remove test directory");
