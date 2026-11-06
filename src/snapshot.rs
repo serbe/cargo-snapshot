@@ -3,16 +3,16 @@ use std::{
     fs::{self, File},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
-use cargo_metadata::{CargoOpt, DependencyKind, Metadata, MetadataCommand};
+use cargo_metadata::{CargoOpt, DependencyKind, Message, Metadata, MetadataCommand, PackageId};
 
 use crate::{
     cli::args::Args,
     config::{settings::Config, tracing::init_tracing},
     error::SnapshotError,
-    fs::walker::{CfgSet, collect_used_rs_files},
+    fs::walker::{CfgSet, collect_project_rs_files, collect_used_rs_files},
 };
 
 pub(crate) struct Snapshot {
@@ -45,7 +45,8 @@ impl Snapshot {
         }
         let metadata = metadata_command.exec()?;
         let features = active_root_features(&metadata);
-        let cfg = rustc_cfg(target.as_deref(), features)?;
+        let build_script_cfgs = active_root_build_script_cfgs(&metadata, &args, target.as_deref())?;
+        let cfg = rustc_cfg(target.as_deref(), features, build_script_cfgs)?;
         Ok(Self {
             config,
             metadata,
@@ -180,7 +181,9 @@ impl Snapshot {
     pub(crate) fn write_sources_md<P: AsRef<Path>>(&self, output: P) -> Result<(), SnapshotError> {
         let output = output.as_ref();
         let sources = self.sorted_sources();
-        ensure_output_is_not_source(output, &sources)?;
+        let root = Path::new(self.metadata.workspace_root.as_str());
+        let project_sources = collect_project_rs_files(root)?;
+        ensure_output_is_not_source(output, &project_sources)?;
 
         let file = File::create(output)?;
         let output_path = output.canonicalize().ok();
@@ -243,7 +246,7 @@ impl Snapshot {
 
 fn ensure_output_is_not_source(
     output: &Path,
-    source_files: &[PathBuf],
+    source_files: &HashSet<PathBuf>,
 ) -> Result<(), SnapshotError> {
     let output = canonical_output_path(output)?;
 
@@ -291,7 +294,77 @@ fn active_root_features(metadata: &Metadata) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn rustc_cfg(target: Option<&str>, features: Vec<String>) -> Result<CfgSet, SnapshotError> {
+fn active_root_build_script_cfgs(
+    metadata: &Metadata,
+    args: &Args,
+    target: Option<&str>,
+) -> Result<Vec<String>, SnapshotError> {
+    let Some(package) = metadata.root_package() else {
+        return Err(SnapshotError::NoRootPackage);
+    };
+
+    run_build_script_cfgs(
+        std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()),
+        package.manifest_path.as_std_path(),
+        &package.id,
+        args,
+        target,
+    )
+}
+
+fn run_build_script_cfgs(
+    cargo: impl AsRef<std::ffi::OsStr>,
+    manifest_path: &Path,
+    package_id: &PackageId,
+    args: &Args,
+    target: Option<&str>,
+) -> Result<Vec<String>, SnapshotError> {
+    let mut command = Command::new(cargo);
+    command
+        .arg("check")
+        .arg("--message-format=json")
+        .arg("--manifest-path")
+        .arg(manifest_path);
+    if args.all_features {
+        command.arg("--all-features");
+    }
+    if args.no_default_features {
+        command.arg("--no-default-features");
+    }
+    if !args.features.is_empty() {
+        command.arg("--features").arg(args.features.join(","));
+    }
+    if let Some(target) = target {
+        command.arg("--target").arg(target);
+    }
+
+    let output = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()?;
+    let mut cfgs = Vec::new();
+    for message in Message::parse_stream(output.stdout.as_slice()) {
+        if let Message::BuildScriptExecuted(build_script) = message?
+            && &build_script.package_id == package_id
+        {
+            cfgs.extend(build_script.cfgs);
+        }
+    }
+
+    if !output.status.success() {
+        return Err(SnapshotError::CargoCheck(
+            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        ));
+    }
+
+    Ok(cfgs)
+}
+
+fn rustc_cfg(
+    target: Option<&str>,
+    features: Vec<String>,
+    build_script_cfgs: Vec<String>,
+) -> Result<CfgSet, SnapshotError> {
     let mut command = Command::new("rustc");
     command.arg("--print").arg("cfg");
     if let Some(target) = target {
@@ -308,6 +381,7 @@ fn rustc_cfg(target: Option<&str>, features: Vec<String>) -> Result<CfgSet, Snap
     Ok(CfgSet::from_rustc_output(
         &String::from_utf8_lossy(&output.stdout),
         features,
+        build_script_cfgs,
     ))
 }
 
@@ -523,9 +597,71 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
 
-    use super::{ensure_output_is_not_source, strip_rust_comments};
+    use super::{ensure_output_is_not_source, run_build_script_cfgs, strip_rust_comments};
+    use crate::{cli::args::Args, fs::walker::collect_used_rs_files};
+    use cargo_metadata::{MetadataCommand, PackageId};
+    use clap::Parser;
+    use std::collections::HashSet;
 
     static NEXT_TEST_FILE: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn includes_custom_cfg_emitted_by_root_build_script() {
+        let directory = std::env::temp_dir().join(format!(
+            "cargo-snapshot-build-cfg-{}-{}",
+            std::process::id(),
+            NEXT_TEST_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(directory.join("src")).expect("create package source directory");
+        fs::write(
+            directory.join("Cargo.toml"),
+            "[package]\nname = \"build-cfg-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n",
+        )
+        .expect("write fixture manifest");
+        fs::write(
+            directory.join("build.rs"),
+            "fn main() { println!(\"cargo:rustc-check-cfg=cfg(custom_mode)\"); println!(\"cargo:rustc-cfg=custom_mode\"); }\n",
+        )
+        .expect("write fixture build script");
+        fs::write(
+            directory.join("src/main.rs"),
+            "#[cfg(custom_mode)] mod custom;\nfn main() {}\n",
+        )
+        .expect("write fixture entry point");
+        fs::write(directory.join("src/custom.rs"), "pub fn enabled() {}\n")
+            .expect("write custom module");
+
+        let metadata = MetadataCommand::new()
+            .manifest_path(directory.join("Cargo.toml"))
+            .exec()
+            .expect("read fixture metadata");
+        let package_id: PackageId = metadata
+            .root_package()
+            .expect("fixture root package")
+            .id
+            .clone();
+        let args = Args::parse_from(["cargo-snapshot"]);
+        let cfgs = run_build_script_cfgs(
+            std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()),
+            &directory.join("Cargo.toml"),
+            &package_id,
+            &args,
+            None,
+        )
+        .expect("collect custom build-script cfg");
+        let cfg = super::CfgSet::from_rustc_output("", [], cfgs);
+        let files = collect_used_rs_files(&directory.join("src/main.rs"), &cfg);
+
+        assert!(
+            files.contains(
+                &directory
+                    .join("src/custom.rs")
+                    .canonicalize()
+                    .expect("canonicalize custom module")
+            )
+        );
+        fs::remove_dir_all(directory).expect("remove fixture package");
+    }
 
     #[test]
     fn rejects_output_that_is_a_source_file_without_modifying_it() {
@@ -536,7 +672,7 @@ mod tests {
         ));
         fs::write(&file, "fn original() {}\n").expect("create test source");
 
-        let result = ensure_output_is_not_source(&file, std::slice::from_ref(&file));
+        let result = ensure_output_is_not_source(&file, &HashSet::from([file.clone()]));
 
         assert!(matches!(
             result,
@@ -554,7 +690,35 @@ mod tests {
         let source = PathBuf::from("src/main.rs");
         let output = PathBuf::from("snapshot.md");
 
-        assert!(ensure_output_is_not_source(&output, &[source]).is_ok());
+        assert!(ensure_output_is_not_source(&output, &HashSet::from([source])).is_ok());
+    }
+
+    #[test]
+    fn rejects_unrelated_rust_file_as_output() {
+        let directory = std::env::temp_dir().join(format!(
+            "cargo-snapshot-output-{}-{}",
+            std::process::id(),
+            NEXT_TEST_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).expect("create test directory");
+        let integration_test = directory.join("tests").join("integration.rs");
+        fs::create_dir_all(integration_test.parent().expect("test parent"))
+            .expect("create tests directory");
+        fs::write(&integration_test, "fn integration_test() {}\n")
+            .expect("create unrelated Rust source");
+
+        let sources = HashSet::from([integration_test.clone()]);
+        let result = ensure_output_is_not_source(&integration_test, &sources);
+
+        assert!(matches!(
+            result,
+            Err(crate::error::SnapshotError::OutputIsSource(path)) if path == integration_test
+        ));
+        assert_eq!(
+            fs::read_to_string(&integration_test).expect("read integration source"),
+            "fn integration_test() {}\n"
+        );
+        fs::remove_dir_all(directory).expect("remove test directory");
     }
 
     #[test]
